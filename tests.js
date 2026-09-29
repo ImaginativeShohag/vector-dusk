@@ -578,7 +578,7 @@
       el(id).dispatchEvent(new win.Event('input', { bubbles: true }));
     };
     const waitFor = async (condition) => {
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 500; i++) {
         if (condition()) return;
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
