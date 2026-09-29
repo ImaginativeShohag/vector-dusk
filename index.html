@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Create dark-mode SVG and Android VectorDrawable artwork for free. Preview colors, generate tints and shades, and reuse saved palettes. No uploads or sign-up."
+    />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="icon.png" type="image/png" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file:; script-src 'self' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Vector Dusk · Dark palette editor</title>
+    <link rel="stylesheet" href="style.css" />
+    <script defer src="colors.js"></script>
+    <script defer src="vector.js"></script>
+    <script defer src="svg.js"></script>
+    <script defer src="demo.js"></script>
+    <script defer src="zip.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#editor">Skip to editor</a>
+    <noscript
+      ><p class="noscript">
+        Vector Dusk needs JavaScript to process artwork locally. Enable JavaScript to use the
+        editor. <a href="guide.html">Read the guide</a>.
+      </p></noscript
+    >
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-icon" src="icon.png" alt="" width="32" height="32" /> Vector Dusk
+        <span class="tag">XML + SVG</span>
+      </div>
+      <span class="local"><span class="dot"></span> Local files. No uploads.</span>
+      <a href="guide.html">Guide</a>
+    </header>
+    <main id="editor" tabindex="-1">
+      <section class="intro">
+        <div>
+          <p class="eyebrow">ONE PALETTE. EVERY ILLUSTRATION.</p>
+          <h1>
+            A different light.<br class="mobile-break" />
+            The same character.
+          </h1>
+          <p class="subtitle">
+            Turn your vectors into dark-mode artwork. Fine-tune once, reuse everywhere.
+          </p>
+        </div>
+        <div class="import-actions">
+          <button id="paste-open" class="quiet">Paste XML</button
+          ><button id="import-vectors" class="primary">＋ Import vectors</button>
+        </div>
+      </section>
+
+      <section class="profile-bar" aria-label="Palette profiles">
+        <div class="profile-symbol" aria-hidden="true">◈</div>
+        <label class="profile-label"
+          >PALETTE PROFILE<input
+            id="profile-name"
+            value="My illustrations"
+            maxlength="100"
+            aria-label="Profile name"
+        /></label>
+        <label class="saved-select"
+          ><span class="sr-only">Load saved profile</span
+          ><select id="saved-profiles">
+            <option value="">Saved profiles…</option>
+          </select></label
+        >
+        <span id="profile-state" class="draft">Unsaved draft</span>
+        <div class="profile-actions">
+          <button id="save-profile">Save profile</button
+          ><button id="export-profile" class="quiet">Export profile</button
+          ><button id="import-json" class="quiet">Import JSON</button>
+        </div>
+      </section>
+
+      <div class="workspace">
+        <section class="artwork-panel" aria-label="Illustration editor">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">PREVIEW</p>
+              <h2 id="asset-name">Your illustration</h2>
+            </div>
+            <div class="history">
+              <button id="undo" title="Undo color edit" aria-label="Undo" disabled>↶</button
+              ><button id="redo" title="Redo color edit" aria-label="Redo" disabled>↷</button>
+            </div>
+          </div>
+          <div class="preview-grid">
+            <article class="preview-card">
+              <div class="preview-label"><span>☀ &nbsp;Original</span><span>LIGHT</span></div>
+              <div id="light-preview" class="canvas light"></div>
+              <div class="preview-foot">Original colors stay untouched</div>
+            </article>
+            <article class="preview-card dark-card">
+              <div class="preview-label">
+                <span>☾ &nbsp;Your adaptation</span
+                ><span class="live"><span class="dot"></span> LIVE</span>
+              </div>
+              <div id="dark-preview" class="canvas dark"></div>
+              <div class="preview-foot">
+                <label for="dark-background">Preview background</label
+                ><input
+                  id="dark-background"
+                  type="color"
+                  value="#191B24"
+                  aria-label="Dark preview background"
+                /><code id="background-label">#191B24</code>
+              </div>
+            </article>
+          </div>
+          <div class="preview-controls">
+            <label><input id="highlight" type="checkbox" /> Highlight selected color</label
+            ><span id="vector-meta"></span>
+          </div>
+          <details id="warning-box" class="warnings" hidden>
+            <summary id="warning-summary">Preview notes</summary>
+            <ul id="warnings"></ul>
+          </details>
+          <div class="collection-heading">
+            <h3>Illustrations <span id="asset-count" class="count">0</span></h3>
+            <button id="load-demo" class="text-button">Load example</button>
+          </div>
+          <div id="asset-list" class="asset-list" aria-label="Loaded illustrations"></div>
+          <div class="drop-hint">
+            Drop SVG or VectorDrawable XML files anywhere to add them to this collection.
+          </div>
+          <p id="workspace-state" class="workspace-state">
+            Save workspace to keep artwork and overrides.
+          </p>
+          <div class="export-bar">
+            <button id="save-workspace" class="quiet">Save workspace</button>
+            <div>
+              <button id="show-xml" class="quiet">View XML</button
+              ><button id="export-current">Export XML ↓</button
+              ><button id="export-all" class="primary">Export all ↓</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="palette-panel" aria-label="Color mapping editor">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">COLOR MAPPING</p>
+              <h2>Your dark palette</h2>
+            </div>
+            <span id="color-count" class="count">0</span>
+          </div>
+          <p class="panel-description">Select a color to make it your own.</p>
+          <div class="palette-columns"><span>ORIGINAL</span><span>DARK MODE</span></div>
+          <div id="palette-list" class="palette-list"></div>
+          <section id="color-editor" class="color-editor">
+            <div class="editor-heading">
+              <h3>Edit replacement</h3>
+              <span id="mapping-origin" class="origin">Suggested</span>
+            </div>
+            <p id="selected-source" class="selected-source"></p>
+            <div class="target-controls">
+              <input id="target-picker" type="color" aria-label="Replacement color" /><label
+                ><span class="sr-only">Replacement hex color</span
+                ><input
+                  id="target-hex"
+                  type="text"
+                  maxlength="9"
+                  spellcheck="false"
+                  aria-label="Replacement hex color"
+                  placeholder="#RRGGBB"
+              /></label>
+            </div>
+            <p id="hex-hint" class="editor-tip">Android hex · alpha first: #AARRGGBB</p>
+            <p id="color-error" class="field-error" hidden>
+              Use #RGB, #ARGB, #RRGGBB or #AARRGGBB (alpha first).
+            </p>
+            <section class="tones" aria-label="Tints and shades of the original color">
+              <p class="editor-tip">From original color · click a swatch to apply</p>
+              <div
+                id="tone-steps"
+                class="tone-steps"
+                role="group"
+                aria-label="Swatches per tint and shade list"
+              >
+                <button type="button" data-steps="5" aria-pressed="false">5</button>
+                <button type="button" data-steps="10" aria-pressed="true">10</button>
+                <button type="button" data-steps="20" aria-pressed="false">20</button>
+              </div>
+              <div id="tone-ramps"></div>
+            </section>
+            <label class="field-label" for="edit-scope">Apply this change to</label>
+            <select id="edit-scope">
+              <option value="palette">Palette · all illustrations</option>
+              <option value="image" selected>This illustration</option>
+              <option value="shape">Selected use only</option>
+            </select>
+            <label id="use-label" class="field-label" for="selected-use" hidden
+              >Fill, stroke or gradient stop</label
+            ><select id="selected-use" hidden></select>
+            <div class="editor-actions">
+              <button id="keep-original">Keep original</button
+              ><button id="reset-color" class="quiet">Reset override</button>
+            </div>
+            <p class="editor-tip">
+              Suggestions preserve the hue family. You decide what looks right.
+            </p>
+          </section>
+          <div class="resources">
+            <div>
+              <h3>Referenced colors</h3>
+              <p id="resource-count">Using @color/…? Add your source palette.</p>
+            </div>
+            <button id="import-resources" class="quiet">Import colors.xml</button>
+          </div>
+        </aside>
+      </div>
+      <footer>
+        <p id="status" role="status" aria-live="polite">
+          Ready. Load your artwork or explore the example.
+        </p>
+        <span class="footer-links"
+          ><span aria-label="Version 0.0.1">v0.0.1</span> · <a href="guide.html">Guide</a> ·
+          <a href="privacy.html">Privacy &amp; local data</a></span
+        >
+      </footer>
+    </main>
+
+    <input
+      id="vector-files"
+      type="file"
+      accept=".xml,.svg,image/svg+xml,text/xml,application/xml"
+      multiple
+      hidden
+    />
+    <input id="resource-files" type="file" accept=".xml,text/xml,application/xml" multiple hidden />
+    <input id="json-file" type="file" accept=".json,application/json" hidden />
+
+    <dialog id="paste-dialog" aria-labelledby="paste-title">
+      <div class="dialog-heading">
+        <h2 id="paste-title">Paste SVG or VectorDrawable XML</h2>
+        <button id="paste-close" class="quiet" aria-label="Close XML import">✕</button>
+      </div>
+      <label class="field-label" for="xml-name">Filename</label
+      ><input id="xml-name" value="illustration.xml" /><label class="field-label" for="xml-input"
+        >Vector XML</label
+      ><textarea
+        id="xml-input"
+        spellcheck="false"
+        placeholder="<vector xmlns:android=…>"
+      ></textarea>
+      <p id="paste-error" class="field-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button id="paste-import" class="primary">Add illustration</button>
+      </div>
+    </dialog>
+    <dialog id="export-dialog" aria-labelledby="export-title">
+      <div class="dialog-heading">
+        <h2 id="export-title">Dark VectorDrawable XML</h2>
+        <button id="export-close" class="quiet" aria-label="Close XML export">✕</button>
+      </div>
+      <p id="export-help" class="subtitle">Save in drawable-night with the original filename.</p>
+      <textarea id="export-xml" readonly aria-label="Exported XML" spellcheck="false"></textarea>
+      <div class="dialog-actions">
+        <button id="copy-xml">Copy XML</button
+        ><button id="download-xml" class="primary">Download XML</button>
+      </div>
+    </dialog>
+    <div id="drop-overlay" hidden>
+      Drop your SVG or vector XML files here<span>Your files stay on this computer.</span>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <link rel="icon" href="icon.png" type="image/png" />
+    <link rel="stylesheet" href="style.css" />
+    <title>How to use Vector Dusk · Vector Dusk</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html"
+        ><img class="brand-icon" src="icon.png" alt="" width="32" height="32" /> Vector Dusk</a
+      >
+      <nav aria-label="Site">
+        <a href="index.html">Editor</a> · <a href="guide.html">Guide</a> ·
+        <a href="privacy.html">Privacy</a>
+      </nav>
+    </header>
+    <main class="document-page">
+      <p class="eyebrow">FREE · LOCAL · NO SIGN-UP</p>
+      <h1>Make a dark palette. Reuse it.</h1>
+      <h2>1. Import</h2>
+      <p>
+        Drop SVG or Android VectorDrawable XML files into the editor, or choose Paste XML. For
+        Android resource colors, also import your light-mode colors.xml.
+      </p>
+      <h2>2. Adjust</h2>
+      <p>
+        Select a palette row or click a shape. Choose a replacement with the picker, hex input, or
+        generated tints and shades. The 5 / 10 / 20 selector changes the number of swatches;
+        transparency is preserved.
+      </p>
+      <p>
+        Apply changes to the shared palette, this illustration, or a selected fill, stroke or
+        gradient stop. Individual overrides take priority. Keep original protects a color; Reset
+        override removes the current override. Undo and Redo reverse edits.
+      </p>
+      <p>
+        Eight-digit hex uses <code>#RRGGBBAA</code> for SVG and <code>#AARRGGBB</code> for Android.
+        The editor labels the format.
+      </p>
+      <h2>3. Save</h2>
+      <ul>
+        <li>
+          <strong>Save profile:</strong> shared colors in this browser. Export profile downloads a
+          portable copy.
+        </li>
+        <li>
+          <strong>Save workspace:</strong> downloads artwork, palette and individual overrides. Use
+          Import JSON to reopen either file.
+        </li>
+      </ul>
+      <p>Save a workspace before closing or reloading. Profiles do not save artwork.</p>
+      <h2>4. Export</h2>
+      <p>
+        Export one SVG/XML or a collection ZIP. Place Android files in
+        <code>res/drawable-night/</code> using the original filenames.
+      </p>
+      <h2>Know the limits</h2>
+      <p>
+        Use static SVG; expand symbols and use instances first. Scripts, external resources and
+        unsupported effects are removed. Review import notes. Android tint, trim paths and sweep
+        gradients have preview limitations; verify exports on Android.
+      </p>
+      <p>
+        Limits: 5 MB per vector, 100 illustrations and 50 MB per workspace JSON. Use a current
+        desktop browser. Check the final colors and contrast yourself.
+      </p>
+      <p>
+        <a href="fixtures/palette.svg" download="palette.svg">Try the sample SVG</a> ·
+        <a href="privacy.html">Privacy and local data</a>
+      </p>
+    </main>
+  </body>
+</html>

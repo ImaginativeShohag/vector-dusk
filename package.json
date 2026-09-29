@@ -1,0 +1,20 @@
+{
+  "name": "vector-dusk",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "description": "Local-first dark palette editor for SVG and Android VectorDrawable artwork",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node run-tests.mjs",
+    "test:site": "node site-tests.mjs && node run-tests.mjs --site",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.8.3"
+  }
+}
