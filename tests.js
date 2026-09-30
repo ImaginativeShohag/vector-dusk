@@ -301,14 +301,14 @@
         .textContent,
       '#ABCDEF',
     );
-    el('asset-list').querySelectorAll('button')[0].click();
+    el('asset-list').querySelectorAll('.asset')[0].click();
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), firstColor);
     equal(
       el('palette-list').querySelector('.palette-row .color-cell:last-child .color-text')
         .textContent,
       firstColor,
     );
-    el('asset-list').querySelectorAll('button')[1].click();
+    el('asset-list').querySelectorAll('.asset')[1].click();
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#ABCDEF');
     frame.remove();
   });
@@ -932,6 +932,228 @@
     equal(el('asset-count').textContent, '1');
     ok(el('status').textContent.includes('100 illustrations'), 'Missing collection limit message');
     frame.remove();
+  });
+
+  await test('Micro interactions confirm selection, imports, history, scope and clipboard outcomes', async () => {
+    const frame = document.createElement('iframe');
+    frame.src = 'index.html';
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    document.body.append(frame);
+    await loaded;
+    const doc = frame.contentDocument,
+      win = frame.contentWindow;
+    const el = (id) => doc.getElementById(id);
+    try {
+      await el('vector-files').onchange({
+        target: {
+          files: [
+            new win.File([wrap(path('#123456'))], 'one.xml'),
+            new win.File([wrap(path('#123456'))], 'two.xml'),
+          ],
+          value: '',
+        },
+      });
+      equal(doc.querySelectorAll('.asset.feedback-flash').length, 2);
+      el('light-preview')
+        .querySelector('[data-node]')
+        .dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+      ok(el('palette-list').querySelector('.active.feedback-flash'), 'Missing selection feedback');
+      el('tone-ramps').querySelectorAll('button')[1].click();
+      const selected = el('tone-ramps').querySelector('[aria-pressed="true"] .tone-check');
+      ok(
+        selected && win.getComputedStyle(selected).display !== 'none',
+        'Missing selected tone check',
+      );
+      el('edit-scope').value = 'palette';
+      el('edit-scope').dispatchEvent(new win.Event('change'));
+      ok(
+        el('scope-impact').textContent.startsWith('Affects 1 illustration.'),
+        'Scope includes overridden illustration',
+      );
+      el('undo').click();
+      ok(el('palette-list').querySelector('.feedback-flash'), 'Undo did not mark changed color');
+      ok(el('status').textContent.includes('Undo complete'), 'Missing undo announcement');
+      ok(
+        el('scope-impact').textContent.startsWith('Affects 2 illustrations.'),
+        'Scope count did not refresh',
+      );
+      el('redo').click();
+      ok(el('palette-list').querySelector('.feedback-flash'), 'Redo did not mark changed color');
+      ok(el('status').textContent.includes('Redo complete'), 'Missing redo announcement');
+      const transfer = new win.DataTransfer();
+      transfer.items.add(new win.File(['test'], 'test.xml'));
+      doc.dispatchEvent(new win.DragEvent('dragenter', { dataTransfer: transfer }));
+      equal(el('drop-overlay').hidden, false);
+      doc.dispatchEvent(new win.DragEvent('dragleave', { dataTransfer: transfer }));
+      equal(el('drop-overlay').hidden, true);
+      let copied;
+      Object.defineProperty(win.navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (value) => {
+            copied = value;
+          },
+        },
+      });
+      el('show-xml').click();
+      await el('copy-xml').onclick();
+      equal(copied, el('export-xml').value);
+      equal(el('copy-xml').textContent, 'Copied ✓');
+      await new Promise((resolve) => win.setTimeout(resolve, 1600));
+      equal(el('copy-xml').textContent, 'Copy XML');
+      win.navigator.clipboard.writeText = async () => {
+        throw new Error('Denied');
+      };
+      await el('copy-xml').onclick();
+      equal(el('copy-xml').textContent, 'Copy XML');
+      equal(el('copy-xml').disabled, false);
+      ok(el('status').textContent.includes('Ctrl+C'), 'Copy failure lost manual fallback');
+      equal(doc.querySelectorAll('.feedback-flash').length, 0);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Removal preserves selection, drops exports, resets history and supports an empty workspace', async () => {
+    const frame = document.createElement('iframe');
+    frame.src = 'index.html';
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    document.body.append(frame);
+    await loaded;
+    const doc = frame.contentDocument,
+      win = frame.contentWindow;
+    const el = (id) => doc.getElementById(id);
+    const remove = (index) => el('asset-list').querySelectorAll('.asset-remove')[index].click();
+    try {
+      await el('vector-files').onchange({
+        target: {
+          files: ['one', 'two', 'three'].map(
+            (name) => new win.File([wrap(path('#123456'))], name + '.xml'),
+          ),
+          value: '',
+        },
+      });
+      el('asset-list').querySelectorAll('.asset')[1].click();
+      el('keep-original').click();
+      remove(0);
+      equal(el('asset-name').textContent, 'two.xml');
+      equal(el('asset-count').textContent, '2');
+      equal(el('undo').disabled, true);
+      equal(el('redo').disabled, true);
+      equal(doc.activeElement.getAttribute('aria-label'), 'Remove two.xml');
+      let workspace;
+      win.URL.createObjectURL = (blob) => {
+        workspace = blob;
+        return 'blob:test';
+      };
+      win.HTMLAnchorElement.prototype.click = () => {};
+      el('save-workspace').click();
+      equal(
+        JSON.parse(await workspace.text()).assets.map((asset) => asset.name),
+        ['two.xml', 'three.xml'],
+      );
+      remove(1);
+      equal(el('asset-name').textContent, 'two.xml');
+      remove(0);
+      equal(el('asset-count').textContent, '0');
+      equal(el('color-editor').hidden, true);
+      equal(doc.activeElement, el('import-vectors'));
+      for (const id of ['export-current', 'export-all', 'show-xml', 'save-workspace'])
+        equal(el(id).disabled, true);
+      el('dark-background').value = '#112233';
+      el('dark-background').dispatchEvent(new win.Event('input'));
+      el('undo').click();
+      equal(el('dark-background').value, '#191b24');
+      el('load-demo').click();
+      equal(el('asset-count').textContent, '1');
+      equal(el('export-current').disabled, false);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Narrow layouts show the whole palette and a visible profile name input', async () => {
+    const frame = document.createElement('iframe');
+    frame.src = 'index.html';
+    frame.style.cssText = 'width:777px;height:925px';
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    document.body.append(frame);
+    await loaded;
+    const doc = frame.contentDocument,
+      win = frame.contentWindow;
+    const el = (id) => doc.getElementById(id);
+    try {
+      const artwork = wrap(
+        Array.from({ length: 30 }, (_, index) => path('#' + (0x123400 + index).toString(16))).join(
+          '',
+        ),
+      );
+      await el('vector-files').onchange({
+        target: { files: [new win.File([artwork], 'many.xml')], value: '' },
+      });
+      for (const width of [777, 390]) {
+        frame.style.width = width + 'px';
+        const list = el('palette-list');
+        equal(win.getComputedStyle(list).maxHeight, 'none');
+        ok(list.scrollHeight <= list.clientHeight + 1, 'Palette has an inner scrollbar');
+        ok(
+          doc.documentElement.scrollWidth <= doc.documentElement.clientWidth,
+          'Narrow layout overflows',
+        );
+        const input = win.getComputedStyle(el('profile-name'));
+        ok(parseFloat(input.borderTopWidth) > 0, 'Profile name lacks input border');
+        ok(parseFloat(input.paddingLeft) > 0, 'Profile name lacks input padding');
+      }
+      frame.style.width = '1200px';
+      ok(
+        win.getComputedStyle(el('palette-list')).maxHeight !== 'none',
+        'Desktop cap unexpectedly removed',
+      );
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Background animation respects pause control and motion preference', async () => {
+    const frame = document.createElement('iframe');
+    frame.src = 'index.html';
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    document.body.append(frame);
+    await loaded;
+    try {
+      const doc = frame.contentDocument,
+        win = frame.contentWindow;
+      const background = doc.querySelector('.ambient-background');
+      const style = () => win.getComputedStyle(background, '::before');
+      if (background.querySelector('canvas'))
+        ok(
+          background.classList.contains('canvas-ready'),
+          'Canvas shader failed to compile or link',
+        );
+      if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        equal(style().animationName, 'none');
+      } else {
+        equal(style().animationName, 'none');
+        equal(win.getComputedStyle(background, '::after').animationName, 'ambient-grain');
+        if (background.classList.contains('canvas-ready'))
+          equal(background.dataset.running, 'true');
+        doc.getElementById('background-motion').click();
+        if (background.classList.contains('canvas-ready'))
+          equal(background.dataset.running, 'false');
+        equal(win.getComputedStyle(background, '::after').animationPlayState, 'paused');
+        doc.getElementById('background-motion').click();
+        if (background.classList.contains('canvas-ready'))
+          equal(background.dataset.running, 'true');
+      }
+      equal(win.getComputedStyle(background).pointerEvents, 'none');
+      equal(win.getComputedStyle(background).position, 'absolute');
+      const top = background.getBoundingClientRect().top;
+      win.scrollTo(0, 150);
+      ok(win.scrollY > 0, 'Page did not scroll');
+      equal(Math.round(background.getBoundingClientRect().top + win.scrollY), Math.round(top));
+    } finally {
+      frame.remove();
+    }
   });
 
   const failures = results.filter((r) => r.startsWith('FAIL')).length;

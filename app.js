@@ -34,6 +34,29 @@
     getElement('status').textContent = message;
     getElement('status').classList.toggle('error', error);
   }
+  function flash(node) {
+    node.classList.add('feedback-flash');
+    setTimeout(() => node.classList.remove('feedback-flash'), 900);
+  }
+  function paletteValues() {
+    const asset = activeAsset();
+    if (!asset) return [];
+    const map = effectiveMappings(asset);
+    return vectorTools
+      .palette(asset.model)
+      .map((color) =>
+        JSON.stringify(
+          color.uses.map((use) =>
+            vectorTools.resolveColor(
+              (asset.uses[use.id] || map[color.key]) === 'keep'
+                ? color.key
+                : asset.uses[use.id] || map[color.key],
+              state.resources,
+            ),
+          ),
+        ),
+      );
+  }
   function filename(name, format) {
     const basename =
       name
@@ -90,6 +113,7 @@
     state.workspaceDirty = true;
   }
   function restoreEdits(text) {
+    const before = paletteValues();
     const value = JSON.parse(text);
     state.mappings = value.mappings;
     state.resources = value.resources;
@@ -101,6 +125,12 @@
     state.dirty = true;
     state.workspaceDirty = true;
     render();
+    const after = paletteValues();
+    getElement('palette-list')
+      .querySelectorAll('.palette-row')
+      .forEach((row, index) => {
+        if (before[index] !== after[index]) flash(row);
+      });
   }
   function resetHistory() {
     state.undo = [];
@@ -205,6 +235,7 @@
             getElement('highlight').checked = true;
             selectColor(use.key, use.id);
             revealPaletteSelection();
+            flash(getElement('palette-list').querySelector('.active'));
           }
         });
       }
@@ -214,6 +245,24 @@
     getElement('warning-summary').textContent =
       `${warnings.size} preview note${warnings.size === 1 ? '' : 's'} · review before export`;
     getElement('warnings').replaceChildren(...[...warnings].map((w) => element('li', '', w)));
+  }
+  function removeAsset(index) {
+    const [removed] = state.assets.splice(index, 1);
+    if (index < state.active) state.active--;
+    else if (index === state.active) {
+      state.active = Math.max(0, Math.min(index, state.assets.length - 1));
+      state.selected = '';
+      state.use = '';
+    }
+    state.workspaceDirty = true;
+    resetHistory(); // Edit snapshots use collection indices; removal invalidates them.
+    render();
+    const focus =
+      getElement('asset-list').querySelectorAll('.asset-remove')[
+        Math.min(index, state.assets.length - 1)
+      ] || getElement('import-vectors');
+    focus.focus({ preventScroll: true });
+    status(`Removed ${removed.name} from this workspace. Original file unchanged.`);
   }
   function renderAssets() {
     getElement('asset-list').replaceChildren(
@@ -241,7 +290,13 @@
           state.use = selectedPaletteEntry()?.uses[0]?.id || '';
           render();
         };
-        return button;
+        const card = element('div', 'asset-card');
+        const remove = element('button', 'asset-remove quiet', 'Remove');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', `Remove ${asset.name}`);
+        remove.onclick = () => removeAsset(index);
+        card.append(button, remove);
+        return card;
       }),
     );
   }
@@ -319,6 +374,9 @@
           swatch(value),
           element('code', 'tone-hex', code.slice(1)),
         );
+        const check = element('span', 'tone-check', '✓');
+        check.setAttribute('aria-hidden', 'true');
+        button.append(check);
         button.onclick = () => {
           edit(value);
           // Rendering replaces the grid; keep keyboard navigation on this swatch.
@@ -359,6 +417,26 @@
         ? 'SVG hex · alpha last: #RRGGBBAA'
         : 'Android hex · alpha first: #AARRGGBB';
     getElement('edit-scope').value = state.scope;
+    const affected =
+      state.scope === 'palette'
+        ? state.assets.filter(
+            (item) =>
+              !own(item.overrides, state.selected) &&
+              vectorTools
+                .palette(item.model)
+                .some(
+                  (entry) =>
+                    entry.key === state.selected &&
+                    entry.uses.some((use) => !own(item.uses, use.id)),
+                ),
+          ).length
+        : 1;
+    getElement('scope-impact').textContent =
+      state.scope === 'shape'
+        ? 'Affects selected use only.'
+        : state.scope === 'image'
+          ? 'Affects this illustration. Individual overrides stay unchanged.'
+          : `Affects ${affected} illustration${affected === 1 ? '' : 's'}. Existing overrides stay unchanged.`;
     getElement('selected-use').replaceChildren(
       ...color.uses.map((use) => {
         const option = element('option', '', use.label);
@@ -437,6 +515,7 @@
     state.workspaceDirty = true;
     resetHistory();
     render();
+    [...getElement('asset-list').querySelectorAll('.asset')].slice(state.active).forEach(flash);
   }
   function currentProfile() {
     const mappings = { ...state.mappings };
@@ -577,6 +656,7 @@
     state.selected = '';
     state.use = '';
     applyProfile(profile);
+    [...getElement('asset-list').querySelectorAll('.asset')].forEach(flash);
   }
 
   function bindImportEvents() {
@@ -658,12 +738,14 @@
       if (state.undo.length) {
         state.redo.push(snapshotEdits());
         restoreEdits(state.undo.pop());
+        status('Undo complete. Previous colors and settings restored.');
       }
     };
     getElement('redo').onclick = () => {
       if (state.redo.length) {
         state.undo.push(snapshotEdits());
         restoreEdits(state.redo.pop());
+        status('Redo complete. Colors and settings reapplied.');
       }
     };
     getElement('dark-background').oninput = () => {
@@ -784,14 +866,25 @@
       }
     };
     getElement('export-close').onclick = () => getElement('export-dialog').close();
+    let copyTimer;
     getElement('copy-xml').onclick = reportErrors(async () => {
+      const button = getElement('copy-xml');
+      clearTimeout(copyTimer);
+      button.textContent = 'Copy XML';
+      button.disabled = true;
       try {
         await navigator.clipboard.writeText(getElement('export-xml').value);
+        button.textContent = 'Copied ✓';
+        copyTimer = setTimeout(() => {
+          button.textContent = 'Copy XML';
+        }, 1500);
         status('XML copied.');
       } catch {
         getElement('export-xml').focus();
         getElement('export-xml').select();
         status('Press ⌘C / Ctrl+C to copy the selected XML.');
+      } finally {
+        button.disabled = false;
       }
     });
     getElement('export-all').onclick = reportErrors(() => {

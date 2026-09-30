@@ -19,6 +19,7 @@ const files = [
   'demo.js',
   'zip.js',
   'app.js',
+  'background.js',
   'fixtures/palette.svg',
 ];
 await rm(destination, { recursive: true, force: true });

@@ -22,8 +22,10 @@
     <script defer src="demo.js"></script>
     <script defer src="zip.js"></script>
     <script defer src="app.js"></script>
+    <script defer src="background.js"></script>
   </head>
-  <body>
+  <body class="editor-page">
+    <div class="ambient-background" aria-hidden="true"></div>
     <a class="skip-link" href="#editor">Skip to editor</a>
     <noscript
       ><p class="noscript">
@@ -58,25 +60,26 @@
       </section>
 
       <section class="profile-bar" aria-label="Palette profiles">
-        <div class="profile-symbol" aria-hidden="true">◈</div>
         <label class="profile-label"
-          >PALETTE PROFILE<input
+          >PROFILE NAME<input
             id="profile-name"
             value="My illustrations"
             maxlength="100"
             aria-label="Profile name"
         /></label>
-        <label class="saved-select"
-          ><span class="sr-only">Load saved profile</span
+        <label class="profile-label saved-select"
+          ><span>Load saved profile</span
           ><select id="saved-profiles">
             <option value="">Saved profiles…</option>
           </select></label
         >
-        <span id="profile-state" class="draft">Unsaved draft</span>
-        <div class="profile-actions">
-          <button id="save-profile">Save profile</button
-          ><button id="export-profile" class="quiet">Export profile</button
-          ><button id="import-json" class="quiet">Import JSON</button>
+        <div class="profile-footer">
+          <span id="profile-state" class="draft">Unsaved draft</span>
+          <div class="profile-actions">
+            <button id="save-profile">Save profile</button
+            ><button id="export-profile" class="quiet">Export profile</button
+            ><button id="import-json" class="quiet">Import JSON</button>
+          </div>
         </div>
       </section>
 
@@ -192,11 +195,12 @@
               <div id="tone-ramps"></div>
             </section>
             <label class="field-label" for="edit-scope">Apply this change to</label>
-            <select id="edit-scope">
+            <select id="edit-scope" aria-describedby="scope-impact">
               <option value="palette">Palette · all illustrations</option>
               <option value="image" selected>This illustration</option>
               <option value="shape">Selected use only</option>
             </select>
+            <p id="scope-impact" class="editor-tip" role="status"></p>
             <label id="use-label" class="field-label" for="selected-use" hidden
               >Fill, stroke or gradient stop</label
             ><select id="selected-use" hidden></select>
@@ -221,10 +225,15 @@
         <p id="status" role="status" aria-live="polite">
           Ready. Load your artwork or explore the example.
         </p>
-        <span class="footer-links"
-          ><span aria-label="Version 0.0.1">v0.0.1</span> · <a href="guide.html">Guide</a> ·
-          <a href="privacy.html">Privacy &amp; local data</a></span
-        >
+        <div class="footer-controls">
+          <label class="background-motion"
+            ><input id="background-motion" type="checkbox" checked /> Animate background</label
+          >
+          <span class="footer-links"
+            ><span aria-label="Version 0.0.1">v0.0.1</span><a href="guide.html">Guide</a
+            ><a href="privacy.html">Privacy &amp; local data</a></span
+          >
+        </div>
       </footer>
     </main>
 

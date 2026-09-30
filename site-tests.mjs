@@ -9,6 +9,7 @@ const expected = [
   '.nojekyll',
   '404.html',
   'app.js',
+  'background.js',
   'demo.js',
   'icon.png',
   'fixtures',
