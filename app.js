@@ -30,13 +30,55 @@
     if (text !== undefined) node.textContent = text;
     return node;
   };
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const pulseTimers = new WeakMap();
+  const confirmTimers = new WeakMap();
+  // Scripted motion bypasses the stylesheet's reduced-motion guard, so check it here.
+  function animate(node, keyframes, options) {
+    if (node && !reducedMotion.matches) node.animate(keyframes, options);
+  }
+  /** Restarts a CSS feedback class, even when the same feedback repeats quickly. */
+  function pulse(node, className, duration) {
+    if (!node) return;
+    const timers = pulseTimers.get(node) || new Map();
+    pulseTimers.set(node, timers);
+    clearTimeout(timers.get(className));
+    node.classList.remove(className);
+    void node.offsetWidth;
+    node.classList.add(className);
+    timers.set(
+      className,
+      setTimeout(() => node.classList.remove(className), duration),
+    );
+  }
+  const flash = (node) => pulse(node, 'feedback-flash', 900);
+  function resetConfirmation(button) {
+    clearTimeout(confirmTimers.get(button));
+    if (button.dataset.label) button.textContent = button.dataset.label;
+    button.style.minWidth = '';
+  }
+  /** Swaps a button label briefly without shifting its neighbours. */
+  function confirmButton(button, label) {
+    resetConfirmation(button);
+    button.dataset.label = button.textContent;
+    button.style.minWidth = `${button.offsetWidth}px`;
+    button.textContent = label;
+    pulse(button, 'confirmed', 300);
+    confirmTimers.set(
+      button,
+      setTimeout(() => resetConfirmation(button), 1500),
+    );
+  }
+  function setCount(id, value) {
+    const node = getElement(id);
+    if (node.textContent === String(value)) return;
+    node.textContent = value;
+    pulse(node, 'count-roll', 250);
+  }
   function status(message, error = false) {
     getElement('status').textContent = message;
     getElement('status').classList.toggle('error', error);
-  }
-  function flash(node) {
-    node.classList.add('feedback-flash');
-    setTimeout(() => node.classList.remove('feedback-flash'), 900);
+    pulse(getElement('status'), 'status-in', 250);
   }
   function paletteValues() {
     const asset = activeAsset();
@@ -232,10 +274,12 @@
             );
           if (use) {
             event.stopPropagation();
+            const revealing = !getElement('highlight').checked;
             getElement('highlight').checked = true;
             selectColor(use.key, use.id);
             revealPaletteSelection();
             flash(getElement('palette-list').querySelector('.active'));
+            if (revealing) revealHighlight();
           }
         });
       }
@@ -245,6 +289,10 @@
     getElement('warning-summary').textContent =
       `${warnings.size} preview note${warnings.size === 1 ? '' : 's'} · review before export`;
     getElement('warnings').replaceChildren(...[...warnings].map((w) => element('li', '', w)));
+  }
+  function revealHighlight() {
+    for (const id of ['light-preview', 'dark-preview'])
+      pulse(getElement(id), 'highlight-enter', 300);
   }
   function removeAsset(index) {
     const [removed] = state.assets.splice(index, 1);
@@ -265,7 +313,16 @@
     status(`Removed ${removed.name} from this workspace. Original file unchanged.`);
   }
   function renderAssets() {
-    getElement('asset-list').replaceChildren(
+    const list = getElement('asset-list');
+    // Measure before replacing cards so moved cards and the active marker glide into place.
+    const before = new Map(
+      [...list.querySelectorAll('.asset-card')].map((card) => [
+        card.dataset.name,
+        card.getBoundingClientRect().left,
+      ]),
+    );
+    const previousActive = list.querySelector('.asset.active')?.parentElement.dataset.name;
+    list.replaceChildren(
       ...state.assets.map((asset, index) => {
         const button = element('button', 'asset' + (index === state.active ? ' active' : ''));
         button.setAttribute('aria-label', `Select ${asset.name}`);
@@ -291,6 +348,7 @@
           render();
         };
         const card = element('div', 'asset-card');
+        card.dataset.name = asset.name;
         const remove = element('button', 'asset-remove quiet', 'Remove');
         remove.type = 'button';
         remove.setAttribute('aria-label', `Remove ${asset.name}`);
@@ -299,15 +357,45 @@
         return card;
       }),
     );
+    if (reducedMotion.matches) return;
+    const glide = { duration: 220, easing: 'ease-out' };
+    for (const card of list.querySelectorAll('.asset-card')) {
+      const left = card.getBoundingClientRect().left;
+      const offset = before.get(card.dataset.name) - left;
+      if (offset)
+        animate(card, [{ transform: `translateX(${offset}px)` }, { transform: 'none' }], glide);
+      if (
+        card.dataset.name === activeAsset().name &&
+        before.has(previousActive) &&
+        previousActive !== card.dataset.name
+      )
+        animate(
+          card,
+          [
+            { transform: `translateX(${before.get(previousActive) - left}px)` },
+            { transform: 'none' },
+          ],
+          { ...glide, pseudoElement: '::after' },
+        );
+    }
   }
+  const paletteTargets = { asset: null, colors: new Map() };
   function renderPalette() {
     const asset = activeAsset();
     const colors = asset ? vectorTools.palette(asset.model) : [];
     const map = asset ? effectiveMappings(asset) : {};
     const scrollTop = getElement('palette-list').scrollTop;
+    // Blend changed replacement swatches from their previous color; the artwork itself never animates.
+    const previous = paletteTargets.asset === asset ? paletteTargets.colors : new Map();
+    paletteTargets.asset = asset;
+    paletteTargets.colors = new Map();
     getElement('palette-list').replaceChildren(
       ...colors.map((color) => {
         const target = map[color.key];
+        const resolvedTarget = vectorTools.resolveColor(
+          target === 'keep' ? color.key : target,
+          state.resources,
+        );
         const button = element(
           'button',
           'palette-row' + (color.key === state.selected ? ' active' : ''),
@@ -319,18 +407,24 @@
         button.append(
           colorCell(displayColor(color.key), vectorTools.resolveColor(color.key, state.resources)),
           element('span', 'mapping-arrow', '→'),
-          colorCell(
-            target === 'keep' ? 'Original' : displayColor(target),
-            vectorTools.resolveColor(target === 'keep' ? color.key : target, state.resources),
-          ),
+          colorCell(target === 'keep' ? 'Original' : displayColor(target), resolvedTarget),
         );
         if (localUses) button.lastChild.append(element('span', 'count', '*'));
+        const rgb = vectorTools.colorParts(resolvedTarget)?.rgb;
+        const from = previous.get(color.key);
+        if (rgb) paletteTargets.colors.set(color.key, rgb);
+        if (rgb && from && from !== rgb)
+          animate(
+            button.lastChild.querySelector('.swatch > span'),
+            [{ backgroundColor: from }, { backgroundColor: rgb }],
+            { duration: 220, easing: 'ease-out' },
+          );
         button.onclick = () => selectColor(color.key);
         return button;
       }),
     );
     getElement('palette-list').scrollTop = scrollTop;
-    getElement('color-count').textContent = colors.length;
+    setCount('color-count', colors.length);
     getElement('color-editor').hidden = !colors.length;
   }
   function renderTones(replacement) {
@@ -380,13 +474,30 @@
         button.onclick = () => {
           edit(value);
           // Rendering replaces the grid; keep keyboard navigation on this swatch.
-          container.querySelector(`[data-tone="${kind}-${index}"]`)?.focus({ preventScroll: true });
+          const picked = container.querySelector(`[data-tone="${kind}-${index}"]`);
+          picked?.focus({ preventScroll: true });
+          pulse(picked, 'picked', 300);
         };
         grid.append(button);
       });
       group.append(heading, grid);
       container.append(group);
     }
+  }
+  /** Collection indices a replacement at the current scope would change. */
+  function affectedAssets() {
+    if (state.scope !== 'palette') return [state.active];
+    return state.assets.flatMap((item, index) =>
+      !own(item.overrides, state.selected) &&
+      vectorTools
+        .palette(item.model)
+        .some(
+          (entry) =>
+            entry.key === state.selected && entry.uses.some((use) => !own(item.uses, use.id)),
+        )
+        ? [index]
+        : [],
+    );
   }
   function renderEditor(keepInput) {
     const color = selectedPaletteEntry();
@@ -417,20 +528,7 @@
         ? 'SVG hex · alpha last: #RRGGBBAA'
         : 'Android hex · alpha first: #AARRGGBB';
     getElement('edit-scope').value = state.scope;
-    const affected =
-      state.scope === 'palette'
-        ? state.assets.filter(
-            (item) =>
-              !own(item.overrides, state.selected) &&
-              vectorTools
-                .palette(item.model)
-                .some(
-                  (entry) =>
-                    entry.key === state.selected &&
-                    entry.uses.some((use) => !own(item.uses, use.id)),
-                ),
-          ).length
-        : 1;
+    const affected = affectedAssets().length;
     getElement('scope-impact').textContent =
       state.scope === 'shape'
         ? 'Affects selected use only.'
@@ -461,7 +559,7 @@
     if (asset && !selectedPaletteEntry())
       state.selected = vectorTools.palette(asset.model)[0]?.key || '';
     getElement('asset-name').textContent = asset?.name || 'Your illustration';
-    getElement('asset-count').textContent = state.assets.length;
+    setCount('asset-count', state.assets.length);
     getElement('vector-meta').textContent = asset
       ? `${asset.model.document.querySelectorAll('path').length} paths · ${asset.model.document.documentElement.getAttributeNS(vectorTools.ANDROID, 'viewportWidth')} × ${asset.model.document.documentElement.getAttributeNS(vectorTools.ANDROID, 'viewportHeight')}`
       : '';
@@ -469,7 +567,8 @@
     if (isSvg)
       getElement('vector-meta').textContent =
         `SVG · ${asset.model.bounds[2]} × ${asset.model.bounds[3]}`;
-    getElement('export-current').textContent = isSvg ? 'Export SVG ↓' : 'Export XML ↓';
+    // The first text node is the label; the arrow span stays for its download cue.
+    getElement('export-current').firstChild.textContent = isSvg ? 'Export SVG ' : 'Export XML ';
     getElement('export-title').textContent = isSvg ? 'Dark SVG' : 'Dark VectorDrawable XML';
     getElement('export-help').textContent = isSvg
       ? 'Export keeps SVG geometry, gradients, and supported styling.'
@@ -515,7 +614,12 @@
     state.workspaceDirty = true;
     resetHistory();
     render();
-    [...getElement('asset-list').querySelectorAll('.asset')].slice(state.active).forEach(flash);
+    const cards = [...getElement('asset-list').querySelectorAll('.asset-card')].slice(state.active);
+    cards.forEach((card, index) => {
+      card.style.setProperty('--stagger', `${Math.min(index, 8) * 40}ms`);
+      pulse(card, 'entering', 600);
+      flash(card.querySelector('.asset'));
+    });
   }
   function currentProfile() {
     const mappings = { ...state.mappings };
@@ -700,6 +804,11 @@
       getElement('target-hex').setAttribute('aria-invalid', !color);
       if (color) edit(color, true);
     };
+    // Shake on commit, not on keystrokes: partial hex values are invalid while typing.
+    getElement('target-hex').onchange = () => {
+      if (getElement('target-hex').getAttribute('aria-invalid') === 'true')
+        pulse(getElement('target-hex'), 'shake', 300);
+    };
     getElement('target-picker').oninput = () => {
       const current = vectorTools.resolveColor(
         selectedReplacement() === 'keep' ? state.selected : selectedReplacement(),
@@ -719,12 +828,21 @@
     getElement('edit-scope').onchange = (event) => {
       state.scope = event.target.value;
       render();
+      pulse(getElement('scope-impact'), 'status-in', 250);
+      if (state.scope === 'shape') flash(getElement('palette-list').querySelector('.active'));
+      else {
+        const cards = getElement('asset-list').querySelectorAll('.asset');
+        for (const index of affectedAssets()) flash(cards[index]);
+      }
     };
     getElement('selected-use').onchange = (event) => {
       state.use = event.target.value;
       render();
     };
-    getElement('highlight').onchange = () => renderPreviews();
+    getElement('highlight').onchange = () => {
+      renderPreviews();
+      if (getElement('highlight').checked) revealHighlight();
+    };
     getElement('keep-original').onclick = () => edit('keep');
     getElement('reset-color').onclick = () => {
       if (!activeAsset()) return;
@@ -738,6 +856,7 @@
       if (state.undo.length) {
         state.redo.push(snapshotEdits());
         restoreEdits(state.undo.pop());
+        pulse(getElement('undo'), 'nudge-back', 260);
         status('Undo complete. Previous colors and settings restored.');
       }
     };
@@ -745,6 +864,7 @@
       if (state.redo.length) {
         state.undo.push(snapshotEdits());
         restoreEdits(state.redo.pop());
+        pulse(getElement('redo'), 'nudge-forward', 260);
         status('Redo complete. Colors and settings reapplied.');
       }
     };
@@ -781,6 +901,8 @@
       renderProfileOptions();
       getElement('saved-profiles').value = profile.name;
       render();
+      confirmButton(getElement('save-profile'), 'Saved ✓');
+      pulse(getElement('profile-state'), 'saved-pop', 400);
       status(
         `Saved “${profile.name}” in this browser. Export profile JSON for a portable backup. Illustration overrides remain in the workspace.`,
       );
@@ -857,7 +979,10 @@
   }
 
   function bindExportEvents() {
-    getElement('export-current').onclick = downloadXml;
+    getElement('export-current').onclick = () => {
+      downloadXml();
+      pulse(getElement('export-current').querySelector('.arrow'), 'dip', 350);
+    };
     getElement('download-xml').onclick = downloadXml;
     getElement('show-xml').onclick = () => {
       if (activeAsset()) {
@@ -866,18 +991,13 @@
       }
     };
     getElement('export-close').onclick = () => getElement('export-dialog').close();
-    let copyTimer;
     getElement('copy-xml').onclick = reportErrors(async () => {
       const button = getElement('copy-xml');
-      clearTimeout(copyTimer);
-      button.textContent = 'Copy XML';
+      resetConfirmation(button);
       button.disabled = true;
       try {
         await navigator.clipboard.writeText(getElement('export-xml').value);
-        button.textContent = 'Copied ✓';
-        copyTimer = setTimeout(() => {
-          button.textContent = 'Copy XML';
-        }, 1500);
+        confirmButton(button, 'Copied ✓');
         status('XML copied.');
       } catch {
         getElement('export-xml').focus();
@@ -894,6 +1014,7 @@
       }));
       files.push({ name: 'palette.json', text: JSON.stringify(currentProfile(), null, 2) });
       download('dark-vectors.zip', window.VectorStudioZip(files), 'application/zip');
+      pulse(getElement('export-all').querySelector('.arrow'), 'dip', 350);
       status(`Exported ${state.assets.length} dark vectors and palette.json in dark-vectors.zip.`);
     });
   }

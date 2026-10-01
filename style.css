@@ -337,9 +337,20 @@ main {
   border-top: 1px solid var(--line);
 }
 .draft {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 10px;
   color: #d6bf8f;
   white-space: nowrap;
+  transition: color 200ms ease;
+}
+.draft::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 .draft.saved {
   color: #dba8b5;
@@ -490,6 +501,7 @@ main {
   margin-bottom: 12px;
 }
 .count {
+  display: inline-block;
   font-size: 10px;
   color: #c2afb4;
   background: #3b252a;
@@ -506,8 +518,21 @@ main {
   min-height: 108px;
 }
 .asset-card {
+  position: relative;
   flex: 0 0 132px;
   min-width: 0;
+}
+/* A card-level marker, so it can slide between cards when the selection changes. */
+.asset-card:has(.asset.active)::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
+  pointer-events: none;
 }
 .asset {
   width: 100%;
@@ -789,10 +814,38 @@ dialog {
   max-height: 90vh;
   overflow: auto;
   box-shadow: 0 25px 100px #0008;
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+  transition:
+    opacity 180ms ease-out,
+    transform 180ms ease-out,
+    overlay 180ms allow-discrete,
+    display 180ms allow-discrete;
+}
+dialog[open] {
+  opacity: 1;
+  transform: none;
 }
 dialog::backdrop {
   background: #0b0708b5;
   backdrop-filter: blur(4px);
+  opacity: 0;
+  transition:
+    opacity 180ms ease-out,
+    overlay 180ms allow-discrete,
+    display 180ms allow-discrete;
+}
+dialog[open]::backdrop {
+  opacity: 1;
+}
+@starting-style {
+  dialog[open] {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  dialog[open]::backdrop {
+    opacity: 0;
+  }
 }
 .dialog-heading,
 .dialog-actions {
@@ -842,6 +895,12 @@ dialog input {
   font-size: 25px;
   color: var(--accent);
   pointer-events: none;
+}
+.drop-icon {
+  font-size: 34px;
+  font-weight: 400;
+  margin-bottom: 12px;
+  animation: drop-bob 1.2s ease-in-out infinite;
 }
 #drop-overlay span {
   font-size: 13px;
@@ -1130,14 +1189,32 @@ dialog input {
 }
 
 .tone-steps {
-  display: inline-flex;
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(3, 1fr);
   margin-top: 9px;
   background: #190f12;
   border: 1px solid var(--line);
   border-radius: 7px;
   overflow: hidden;
 }
+.tone-steps::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(100% / 3);
+  background: #472d33;
+  box-shadow: inset 0 0 0 1px #9b6270;
+  transition: transform 200ms ease;
+}
+.tone-steps:has(button:nth-child(2)[aria-pressed='true'])::before {
+  transform: translateX(100%);
+}
+.tone-steps:has(button:nth-child(3)[aria-pressed='true'])::before {
+  transform: translateX(200%);
+}
 .tone-steps button {
+  position: relative;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1145,10 +1222,12 @@ dialog input {
   font-size: 12px;
   color: var(--muted);
 }
+.tone-steps button:hover {
+  background: #ffffff0d;
+}
 .tone-steps button[aria-pressed='true'] {
-  background: #472d33;
   color: var(--accent);
-  box-shadow: inset 0 0 0 1px #9b6270;
+  transition: color 200ms ease;
 }
 .tone-steps button:focus-visible {
   outline-offset: -3px;
@@ -1290,7 +1369,19 @@ button:enabled:active {
   }
 }
 #drop-overlay:not([hidden]) {
-  animation: drop-in 150ms ease-out;
+  animation:
+    drop-in 150ms ease-out,
+    drop-breathe 1.8s ease-in-out 150ms infinite;
+}
+@keyframes drop-breathe {
+  50% {
+    border-color: #ff9aaf55;
+  }
+}
+@keyframes drop-bob {
+  50% {
+    transform: translateY(5px);
+  }
 }
 @keyframes drop-in {
   from {
@@ -1316,6 +1407,121 @@ button:enabled:active {
 }
 .tone-button[aria-pressed='true'] .tone-check {
   display: block;
+}
+.tone-button.picked .tone-check {
+  animation: pop-in 200ms ease-out;
+}
+/* Dim labels, never swatches, so candidate colors stay comparable. */
+#tone-ramps:has([aria-pressed='true'])
+  .tone-button:not([aria-pressed='true'])
+  :is(.tone-step, .tone-hex) {
+  opacity: 0.6;
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+.history .nudge-back {
+  animation: nudge-back 260ms ease-out;
+}
+.history .nudge-forward {
+  animation: nudge-forward 260ms ease-out;
+}
+@keyframes nudge-back {
+  40% {
+    transform: rotate(-20deg);
+  }
+}
+@keyframes nudge-forward {
+  40% {
+    transform: rotate(20deg);
+  }
+}
+.asset-card.entering {
+  animation: asset-in 240ms ease-out var(--stagger, 0ms) both;
+}
+@keyframes asset-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.confirmed {
+  animation: confirm-pop 300ms ease-out;
+}
+@keyframes confirm-pop {
+  40% {
+    transform: scale(0.96);
+  }
+}
+.draft.saved-pop::before {
+  animation: dot-pop 400ms ease-out;
+}
+@keyframes dot-pop {
+  40% {
+    transform: scale(1.8);
+  }
+}
+.status-in {
+  animation: status-in 250ms ease-out;
+}
+@keyframes status-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.count-roll {
+  animation: count-roll 250ms ease-out;
+}
+@keyframes count-roll {
+  from {
+    opacity: 0;
+    transform: translateY(-40%);
+  }
+}
+.shake {
+  animation: shake 300ms ease-in-out;
+}
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-4px);
+  }
+  40%,
+  80% {
+    transform: translateX(4px);
+  }
+}
+.arrow {
+  display: inline-block;
+}
+.arrow.dip {
+  animation: dip 350ms ease-out;
+}
+@keyframes dip {
+  40% {
+    transform: translateY(3px);
+  }
+}
+/* Entering highlight mode eases in the existing overlay; fills are never animated. */
+.canvas.highlight-enter.highlighting [data-node].selected {
+  animation: highlight-glow 300ms ease-out;
+}
+.canvas.highlight-enter.highlighting [data-node]:not(.selected) {
+  animation: highlight-dim 200ms ease-out;
+}
+@keyframes highlight-glow {
+  from {
+    filter: drop-shadow(0 0 0 #ff9aaf00);
+  }
+}
+@keyframes highlight-dim {
+  from {
+    opacity: 1;
+  }
 }
 #copy-xml {
   min-width: 100px;

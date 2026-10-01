@@ -141,8 +141,11 @@
             <button id="save-workspace" class="quiet">Save workspace</button>
             <div>
               <button id="show-xml" class="quiet">View XML</button
-              ><button id="export-current">Export XML ↓</button
-              ><button id="export-all" class="primary">Export all ↓</button>
+              ><button id="export-current">
+                Export XML <span class="arrow" aria-hidden="true">↓</span></button
+              ><button id="export-all" class="primary">
+                Export all <span class="arrow" aria-hidden="true">↓</span>
+              </button>
             </div>
           </div>
         </section>
@@ -278,6 +281,7 @@
       </div>
     </dialog>
     <div id="drop-overlay" hidden>
+      <b class="drop-icon" aria-hidden="true">↓</b>
       Drop your SVG or vector XML files here<span>Your files stay on this computer.</span>
     </div>
   </body>

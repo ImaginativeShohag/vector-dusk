@@ -1014,6 +1014,94 @@
     }
   });
 
+  await test('Micro interactions animate editor chrome without animating artwork', async () => {
+    const frame = document.createElement('iframe');
+    frame.src = 'index.html';
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    document.body.append(frame);
+    await loaded;
+    const doc = frame.contentDocument,
+      win = frame.contentWindow;
+    const el = (id) => doc.getElementById(id);
+    const has = (node, className) =>
+      ok(node?.classList.contains(className), `Missing ${className}`);
+    const motion = !win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const fire = (id, type) => el(id).dispatchEvent(new win.Event(type));
+    try {
+      // Given: three imports enter in sequence and the counter rolls.
+      await el('vector-files').onchange({
+        target: {
+          files: ['one', 'two', 'three'].map(
+            (name) => new win.File([wrap(path('#123456'))], name + '.xml'),
+          ),
+          value: '',
+        },
+      });
+      equal(doc.querySelectorAll('.asset-card.entering').length, 3);
+      has(el('asset-count'), 'count-roll');
+      has(el('status'), 'status-in');
+      // When: a replacement is typed. Then: only the palette swatch blends.
+      el('target-hex').value = '#A1B2C3';
+      fire('target-hex', 'input');
+      const target = el('palette-list').querySelector(
+        '.active .color-cell:last-child .swatch > span',
+      );
+      equal(target.getAnimations().length > 0, motion);
+      const artwork = el('dark-preview').querySelector('[data-node]');
+      equal(artwork.getAttribute('fill'), '#A1B2C3');
+      equal(artwork.getAnimations().length, 0);
+      // Invalid hex shakes on commit only.
+      el('target-hex').value = '#zz';
+      fire('target-hex', 'input');
+      ok(!el('target-hex').classList.contains('shake'), 'Shook while typing');
+      fire('target-hex', 'change');
+      has(el('target-hex'), 'shake');
+      el('undo').click();
+      has(el('undo'), 'nudge-back');
+      el('redo').click();
+      has(el('redo'), 'nudge-forward');
+      // Scope changes mark exactly the illustrations the next edit would change.
+      el('edit-scope').value = 'palette';
+      fire('edit-scope', 'change');
+      has(el('scope-impact'), 'status-in');
+      ok(el('scope-impact').textContent.startsWith('Affects 2 illustrations.'), 'Wrong impact');
+      equal(el('asset-list').querySelectorAll('.asset.feedback-flash').length, 2);
+      // The active illustration has an override, so test its pick cue at illustration scope.
+      el('edit-scope').value = 'image';
+      fire('edit-scope', 'change');
+      el('tone-ramps').querySelectorAll('button')[2].click();
+      ok(el('tone-ramps').querySelector('.tone-button.picked[aria-pressed="true"]'), 'No pick cue');
+      const pill = win.getComputedStyle(el('tone-steps'), '::before');
+      ok(pill.content !== 'none', 'Missing tone step pill');
+      if (motion) ok(pill.transitionProperty.includes('transform'), 'Pill does not slide');
+      el('highlight').checked = false;
+      fire('highlight', 'change');
+      el('highlight').checked = true;
+      fire('highlight', 'change');
+      has(el('dark-preview'), 'highlight-enter');
+      // Save and export confirm without shifting labels.
+      el('save-profile').click();
+      equal(el('save-profile').textContent, 'Saved ✓');
+      ok(el('save-profile').style.minWidth, 'Save label can shift neighbours');
+      has(el('profile-state'), 'saved-pop');
+      win.URL.createObjectURL = () => 'blob:test';
+      win.HTMLAnchorElement.prototype.click = () => {};
+      el('export-current').click();
+      has(el('export-current').querySelector('.arrow'), 'dip');
+      equal(el('export-current').textContent, 'Export XML ↓');
+      if (motion)
+        ok(
+          win.getComputedStyle(el('paste-dialog')).transitionProperty.includes('opacity'),
+          'Dialog does not fade',
+        );
+      // Removing a card glides the remaining cards into place.
+      el('asset-list').querySelector('.asset-remove').click();
+      equal(el('asset-list').querySelector('.asset-card').getAnimations().length > 0, motion);
+    } finally {
+      frame.remove();
+    }
+  });
+
   await test('Removal preserves selection, drops exports, resets history and supports an empty workspace', async () => {
     const frame = document.createElement('iframe');
     frame.src = 'index.html';
