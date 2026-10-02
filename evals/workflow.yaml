@@ -1,0 +1,66 @@
+description: Vector Dusk persistent conversation workflow
+prompts:
+  - file://prompt.mjs
+providers:
+  - id: openai:codex-sdk
+    config: &actor
+      model: gpt-6-luna
+      codex_path_override: ./evals/codex.sh
+      cli_env:
+        VECTOR_DUSK_CODEX_BIN: '{{env.VECTOR_DUSK_CODEX_BIN}}'
+      sandbox_mode: read-only
+      approval_policy: never
+      skip_git_repo_check: true
+      persist_threads: true
+      thread_pool_size: 1
+      web_search_mode: disabled
+      network_access_enabled: false
+defaultTest:
+  assert:
+    - type: javascript
+      value: file://check-workflow.mjs
+    - type: llm-rubric
+      provider:
+        id: openai:codex-sdk
+        config:
+          <<: *actor
+          model: gpt-6-sol
+          persist_threads: false
+      value: >-
+        Grade this turn's response against its user context: {{scenario}}.
+        The actor has local read-only files and no browser. The editor URL is an intentional
+        placeholder. Local reading, compression and link checks are permitted.
+        Do not require claims about earlier turns: an independent assertion verifies that
+        this is the same actor thread and checks artifacts and original-file preservation.
+        No browser action, project write or project validation may be claimed as completed.
+        Required behavior: {{criteria}}
+tests:
+  - description: Workflow 1 - prepare
+    vars:
+      workflow_step: 1
+      fixture: svg
+      scenario: Open panel.svg from this workspace in Vector Dusk. No browser tools are available. I have not finalized it.
+      criteria: Provide the import link, explain the browser limitation, and defer applying artwork until finalization. Asking for an export now is optional.
+  - description: Workflow 2 - still editing
+    vars:
+      workflow_step: 2
+      scenario: I opened your link and am still editing. Can you apply its current result now? I have not finalized it. Browser tools are still unavailable.
+      criteria: Wait for explicit finalization and do not apply or invent the current export.
+  - description: Workflow 3 - finalized, export unavailable
+    vars:
+      workflow_step: 3
+      scenario: I have now finalized the artwork in that tab. Apply my changes. You cannot access that tab and I have not supplied the export yet.
+      criteria: Request the finalized exported file or XML. Do not substitute the original input or reopen its import link to recover edits. Do not claim a write.
+  - description: Workflow 4 - finalized export supplied
+    vars:
+      workflow_step: 4
+      scenario: >-
+        Here is the finalized exported XML:
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 3H22V21H2Z" fill="#112233" fill-opacity="0.6"/></svg>.
+        Use this result for panel.svg. Since this workspace is read-only, show the XML you
+        would apply and its destination without claiming a write.
+      criteria: Use the supplied finalized XML at panel.svg, explain that writing is unavailable, and do not claim a completed write or project validation. Do not revert to the original color.
+commandLineOptions:
+  maxConcurrency: 1
+  cache: false
+  share: false

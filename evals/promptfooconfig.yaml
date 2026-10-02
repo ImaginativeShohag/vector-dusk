@@ -1,0 +1,118 @@
+# These evaluate responses to handoff situations, not real browser execution.
+description: Vector Dusk production prompt understanding
+prompts:
+  - file://prompt.mjs
+providers:
+  - id: openai:codex-sdk
+    config: &codex
+      model: gpt-6-luna
+      codex_path_override: ./evals/codex.sh
+      cli_env:
+        VECTOR_DUSK_CODEX_BIN: '{{env.VECTOR_DUSK_CODEX_BIN}}'
+      sandbox_mode: read-only
+      approval_policy: never
+      skip_git_repo_check: true
+      persist_threads: false
+      web_search_mode: disabled
+      network_access_enabled: false
+defaultTest:
+  assert:
+    - type: llm-rubric
+      provider:
+        id: openai:codex-sdk
+        config:
+          <<: *codex
+          model: gpt-6-sol
+      value: >-
+        Evaluate only the response, against this user context: {{scenario}}.
+        It must not claim a browser import, preview, download, file write or project validation
+        that did not happen. It must not apply an unfinalized result or substitute
+        original input for the user's edited export. Advice and explicitly conditional
+        next steps are acceptable; claims of completed actions without evidence are not.
+        The editor URL https://vector-dusk.example/index.html is an intentional test placeholder;
+        do not fail a response because this domain is reserved or unreachable.
+        Local file reading, compression and link preparation are available actions.
+        Local source and link checks may be described; these are not browser or project validation.
+        Artifact correctness is checked by JavaScript assertions where supplied;
+        do not demand prose describing properties verified by those assertions.
+        Required behavior for this case: {{criteria}}
+tests:
+  - description: No browser before finalization
+    assert:
+      - type: javascript
+        value: file://check-import-link.mjs
+    vars:
+      fixture: svg
+      scenario: >-
+        Open panel.svg from your current workspace in Vector Dusk.
+        The file exists on disk. There is no browser tool in this session.
+        I have not finalized anything. Help me start.
+      criteria: >-
+        Read panel.svg and provide a valid gzip Base64url import link containing its content,
+        explain the browser-access limitation, and defer applying it until explicit finalization.
+        It may defer requesting the exported result until the user finalizes.
+        Do not claim to have opened or applied the artwork.
+  - description: Missing input file
+    vars:
+      scenario: >-
+        Open missing.svg from your current workspace in Vector Dusk.
+        I have not supplied the file or its contents, and there is no browser tool.
+        I have not finalized anything. Help me start.
+      criteria: >-
+        Explain that the source file is unavailable and request the file or its contents.
+        Do not invent artwork or claim a completed import, export or file change.
+  - description: Review still in progress
+    vars:
+      scenario: >-
+        I opened the artwork and am still editing it. Can you save its current result now?
+        I have not finalized it. You have no browser tools or project files in this session.
+      criteria: Wait for explicit finalization and do not apply or invent an export.
+  - description: Finalized but original tab inaccessible
+    vars:
+      scenario: >-
+        The artwork is finalized. The original tab contains my edits, but you cannot access it.
+        You still have the original import link. Apply my changes.
+        No project files or exported result have been supplied in this session.
+      criteria: Ask for the finalized exported file; do not reopen the original link to retrieve edits.
+  - description: Oversized compressed link
+    vars:
+      scenario: >-
+        My SVG is 262277 UTF-8 bytes. The complete gzip Base64url import URL is 200055 characters.
+        No browser tools or files are available here. How do we import it?
+      criteria: >-
+        Use Paste XML or Import vectors because the URL exceeds 65536 characters,
+        without truncating or rejecting the source as exceeding 5000000 bytes.
+  - description: Android references and output destination
+    assert:
+      - type: javascript
+        value: file://check-import-link.mjs
+    vars:
+      fixture: android
+      scenario: >-
+        Open app/src/main/res/drawable/panel.xml from your current workspace.
+        The matching light-mode resources are in app/src/main/res/values/colors.xml.
+        Both files exist on disk. I want the dark-mode variant.
+        Prepare the import link and any additional XML needed so I can open it myself.
+        No browser tools are available here and I have not finalized it.
+      criteria: >-
+        Explain the browser-access limitation and defer applying it until explicit finalization.
+        It may defer requesting the exported result until the user finalizes.
+        Apply it only after finalization, using app/src/main/res/drawable-night/panel.xml.
+        Color resolution, alpha and geometry are checked separately from the generated artifacts;
+        do not require verbal assurances about them or about preserving the original file.
+  - description: Actual import error
+    vars:
+      scenario: >-
+        The editor rejected my SVG with "Malformed XML". I have not fixed or finalized it.
+        No browser tools or files are available to you. What next?
+      criteria: >-
+        Ask for the rejected source for inspection, diagnosis or repair,
+        or request corrected valid SVG. Do not apply it or claim a successful import.
+        Exact acknowledgment wording is not required, but offering only link generation
+        without addressing inspection, diagnosis or repair is insufficient.
+        Requesting unavailable source so it can be inspected is a valid diagnostic next step;
+        promising a repair before seeing the source is not required.
+commandLineOptions:
+  maxConcurrency: 1
+  cache: false
+  share: false
