@@ -294,6 +294,7 @@ main {
 }
 .import-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   flex-shrink: 0;
 }
@@ -1535,5 +1536,85 @@ button:enabled:active {
   }
   button:enabled:active {
     transform: none;
+  }
+}
+/* AI action button: a gradient pill with a light sweep and twinkling sparkles. */
+.ai-button {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  border-color: transparent;
+  background: linear-gradient(120deg, #ff9aaf, #d8a4ff 55%, #9fc8ff);
+  color: #2a0c18;
+  transition:
+    background 0.15s,
+    box-shadow 0.25s,
+    transform 0.15s;
+}
+.ai-button:hover {
+  background: linear-gradient(120deg, #ffb2c2, #e2b8ff 55%, #b5d5ff);
+  border-color: transparent;
+  box-shadow: 0 6px 20px -8px #d8a4ff;
+}
+.ai-button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, #ffffffaa 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: ai-shimmer 3.2s ease-in-out infinite;
+}
+.ai-sparkles {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  overflow: visible;
+  fill: currentColor;
+}
+.ai-sparkles path {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ai-button .spark-small,
+.ai-button .spark-tiny {
+  animation: ai-twinkle 2.4s ease-in-out infinite;
+}
+.ai-button .spark-tiny {
+  animation-delay: -1.2s;
+}
+.ai-button:hover .spark-main {
+  transform: rotate(90deg) scale(1.1);
+}
+.ai-button.confirmed .ai-sparkles {
+  animation: ai-burst 300ms ease-out;
+}
+@keyframes ai-shimmer {
+  0%,
+  45% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+@keyframes ai-twinkle {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.25;
+    transform: scale(0.4);
+  }
+}
+@keyframes ai-burst {
+  50% {
+    transform: scale(1.35) rotate(20deg);
   }
 }

@@ -54,15 +54,17 @@
   const flash = (node) => pulse(node, 'feedback-flash', 900);
   function resetConfirmation(button) {
     clearTimeout(confirmTimers.get(button));
-    if (button.dataset.label) button.textContent = button.dataset.label;
+    const text = button.querySelector('.button-label') || button;
+    if (button.dataset.label) text.textContent = button.dataset.label;
     button.style.minWidth = '';
   }
   /** Swaps a button label briefly without shifting its neighbours. */
   function confirmButton(button, label) {
     resetConfirmation(button);
-    button.dataset.label = button.textContent;
+    const text = button.querySelector('.button-label') || button;
+    button.dataset.label = text.textContent;
     button.style.minWidth = `${button.offsetWidth}px`;
-    button.textContent = label;
+    text.textContent = label;
     pulse(button, 'confirmed', 300);
     confirmTimers.set(
       button,
@@ -764,6 +766,27 @@
   }
 
   function bindImportEvents() {
+    getElement('agent-prompt-close').onclick = () => getElement('agent-prompt-dialog').close();
+    getElement('copy-agent-prompt').onclick = reportErrors(async () => {
+      const button = getElement('copy-agent-prompt');
+      const prompt = agentPrompt();
+      resetConfirmation(button);
+      button.disabled = true;
+      try {
+        await navigator.clipboard.writeText(prompt);
+        confirmButton(button, 'Copied ✓');
+        status('Agent prompt copied. Paste it into your agent chat.');
+      } catch {
+        const text = getElement('agent-prompt-text');
+        text.value = prompt;
+        getElement('agent-prompt-dialog').showModal();
+        text.focus();
+        text.select();
+        status('Press ⌘C / Ctrl+C to copy the selected agent prompt.');
+      } finally {
+        button.disabled = false;
+      }
+    });
     getElement('import-vectors').onclick = () => getElement('vector-files').click();
     getElement('vector-files').onchange = reportErrors(async (event) => {
       await readFiles([...event.target.files]);
@@ -1022,6 +1045,7 @@
   function bindPageEvents() {
     let dragDepth = 0;
     document.addEventListener('dragenter', (event) => {
+      if (getElement('editor').inert) return;
       if ([...event.dataTransfer.types].includes('Files')) {
         event.preventDefault();
         dragDepth++;
@@ -1043,6 +1067,7 @@
         event.preventDefault();
         dragDepth = 0;
         getElement('drop-overlay').hidden = true;
+        if (getElement('editor').inert) return;
         await readFiles([...event.dataTransfer.files]);
       }),
     );
@@ -1055,7 +1080,101 @@
     });
   }
 
-  function initialize() {
+  function agentPrompt() {
+    const url = new URL(location.href);
+    url.hash = '';
+    url.search = '';
+    return `Open my SVG or Android VectorDrawable XML in Vector Dusk at ${url.href}.
+
+Read the file and retain its original project path and filename. Read-only filesystem access permits reading the source and generating a link in memory; it only prevents file writes. If browser tools are unavailable, still prepare and provide the import link for me to open. If the source is unavailable, ask for the file or its contents.
+
+Run this Node.js example to create a gzip-compressed UTF-8, Base64url import link (#v=1). Copy its output exactly; do not compose or retype compressed data. Decode the generated link and compare it with the source before sharing:
+
+import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
+import { gzipSync } from 'node:zlib';
+const file = 'path/to/illustration.svg'; // Or a VectorDrawable XML file.
+const source = readFileSync(file);
+if (source.length > 5_000_000) throw new Error('File exceeds 5 MB.');
+const url = new URL(${JSON.stringify(url.href)});
+url.hash = new URLSearchParams({ v: '1', name: basename(file), encoding: 'gzip', data: gzipSync(source).toString('base64url') }).toString();
+if (url.href.length > 65_536) throw new Error('Link too large: use Paste XML or Import vectors.');
+console.log(url.href);
+
+The full URL limit is 65,536 characters; decompressed artwork is limited to 5,000,000 bytes. If the link is too large, use Paste XML or Import vectors instead. Uncompressed source is accepted with encoding=text or encoding omitted, using URLSearchParams. Preserve path geometry and alpha values during preparation.
+
+For Android @color references, read the matching light-mode colors.xml and import it using Import colors.xml. Artwork links accept SVG or <vector> XML only; never create an artwork link for a <resources> file. When I must open the editor myself, provide a usable local colors.xml file link or its XML contents so I can import it separately.
+
+Open the editor visibly for me. Report import and preview warnings. The link contains the artwork and is not encrypted. After import the fragment is cleared; save a workspace before refreshing.
+
+Wait until I explicitly say the artwork is finalized before applying any result. Receiving an export or a request to save work in progress does not mean it is finalized. Tell me you will wait when I am still editing. Once finalized, return to the same tab and retrieve the current result using View XML (for SVG too) or the export/download controls. Opening the original link again loads the original input, not my edits. If you cannot access that tab, ask me to provide the finalized exported file; this prompt does not grant browser access.
+
+Apply the finalized result to the intended project location, preserve the format and filename, and run relevant validation when writes are available. For Android dark-mode resources use the matching res/drawable-night/ directory with the original filename, preserving the light-mode original. State the intended output path when preparing the handoff.`;
+  }
+
+  async function importAgentLink() {
+    const params = new URLSearchParams(location.hash.slice(1));
+    if (!params.has('v')) return;
+    if (location.href.length > 65_536)
+      throw new Error('Agent link exceeds 65,536 characters. Use Paste XML or Import vectors.');
+    for (const key of ['v', 'name', 'data', 'encoding'])
+      if (params.getAll(key).length > 1) throw new Error(`Duplicate agent link parameter: ${key}.`);
+    if (params.get('v') !== '1') throw new Error('Unsupported agent link version.');
+    const name = params.get('name');
+    let source = params.get('data');
+    if (!name?.trim() || !source) throw new Error('Agent link needs a filename and artwork.');
+    const encoding = params.get('encoding') ?? 'text';
+    if (encoding === 'gzip') {
+      if (!window.DecompressionStream)
+        throw new Error(
+          'This browser cannot decompress agent links. Use Paste XML or Import vectors.',
+        );
+      if (!/^[A-Za-z0-9_-]+$/.test(source) || source.length % 4 === 1)
+        throw new Error('Invalid Base64url artwork in agent link.');
+      const bytes = Uint8Array.from(atob(source.replaceAll('-', '+').replaceAll('_', '/')), (c) =>
+        c.charCodeAt(0),
+      );
+      const reader = new Blob([bytes])
+        .stream()
+        .pipeThrough(new DecompressionStream('gzip'))
+        .getReader();
+      const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+      const chunks = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 5_000_000) throw new Error('Decompressed artwork exceeds 5 MB.');
+          chunks.push(decoder.decode(value, { stream: true }));
+        }
+        chunks.push(decoder.decode());
+        source = chunks.join('');
+      } catch (error) {
+        await reader.cancel().catch(() => {});
+        throw new Error(`Cannot import compressed artwork: ${error.message}`);
+      } finally {
+        reader.releaseLock();
+      }
+    } else if (encoding !== 'text') throw new Error('Unsupported agent link encoding.');
+    if (new TextEncoder().encode(source).byteLength > 5_000_000)
+      throw new Error('Artwork exceeds 5 MB.');
+    const asset = makeAsset(name, source);
+    // Incoming artwork starts with the default suggestions, independent of a saved palette.
+    state.mappings = {};
+    state.resources = {};
+    state.background = '#191B24';
+    getElement('profile-name').value = 'My illustrations';
+    getElement('saved-profiles').value = '';
+    addAssets([asset]);
+    history.replaceState(null, '', location.pathname + location.search);
+    status(
+      'Artwork loaded. Review the preview notes before exporting. Save a workspace before refreshing.',
+    );
+  }
+
+  async function initialize() {
     bindImportEvents();
     bindColorEditorEvents();
     bindProfileEvents();
@@ -1083,6 +1202,18 @@
     state.workspaceDirty = false;
     render();
     if (storageProblem) status(storageProblem, true);
+    if (new URLSearchParams(location.hash.slice(1)).has('v')) {
+      const editor = getElement('editor');
+      editor.inert = true;
+      editor.setAttribute('aria-busy', 'true');
+      status('Loading artwork from agent link…');
+      try {
+        await reportErrors(importAgentLink)();
+      } finally {
+        editor.inert = false;
+        editor.removeAttribute('aria-busy');
+      }
+    }
   }
 
   initialize();

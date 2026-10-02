@@ -34,6 +34,44 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Keep the terminal running w
 
 Save a workspace before closing or refreshing the page. Profiles do not contain artwork.
 
+## Use with an agent
+
+Choose **Copy prompt for agent** and paste the instructions into your agent chat. The agent can open your SVG or Android VectorDrawable XML in the editor, then wait while you review and adjust it. When you tell the agent you are finished, it can return to the same tab and retrieve the current export through **View XML** or **Download**. The prompt does not grant browser access; if the agent cannot access the tab, download the result and give it the exported file.
+
+Agent import links use `#v=1&name=<filename>&encoding=gzip&data=<payload>`. The payload is gzip-compressed UTF-8 source encoded as unpadded Base64url. Uncompressed source is also accepted with `encoding=text` or with `encoding` omitted; build all parameters with `URLSearchParams`.
+
+To generate a compressed link without dependencies, save this as `agent-link.mjs`, set `SITE_URL` to your editor URL, then run `node agent-link.mjs path/to/illustration.svg` (or an XML file):
+
+```js
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
+import { gzipSync, gunzipSync } from 'node:zlib';
+
+const SITE_URL = 'https://your-editor.example/index.html';
+const file = process.argv[2];
+assert(file, 'Pass an SVG or VectorDrawable XML file.');
+const source = readFileSync(file);
+assert(source.length <= 5_000_000, 'Use a vector of at most 5 MB.');
+const data = gzipSync(source).toString('base64url');
+assert.deepEqual(gunzipSync(Buffer.from(data, 'base64url')), source);
+const url = new URL(SITE_URL);
+url.hash = new URLSearchParams({
+  v: '1',
+  name: basename(file),
+  encoding: 'gzip',
+  data,
+}).toString();
+assert(url.href.length <= 65_536, 'Link too large: use Paste XML or Import vectors.');
+console.log(url.href);
+```
+
+The full URL limit is **65,536 characters** and decompressed source must not exceed **5,000,000 bytes**. For larger links, use **Paste XML** or **Import vectors**. For Android color resource references, also import the corresponding light-mode `colors.xml`.
+
+The link contains your artwork: compression is not encryption, and anyone with the link can read it. The fragment is processed in the browser rather than sent to the hosting server. After a successful import the editor clears the fragment; save a workspace before refreshing or closing the tab.
+
+Local Promptfoo prompt-understanding evals live in [evals/README.md](evals/README.md). Run `npm run eval` with your Codex login; `npm run eval:validate` checks configuration without calling a model. These scenario tests do not prove browser execution.
+
 ## Development
 
 Install the pinned formatter and run the checks:

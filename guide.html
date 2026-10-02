@@ -63,6 +63,28 @@
         Export one SVG/XML or a collection ZIP. Place Android files in
         <code>res/drawable-night/</code> using the original filenames.
       </p>
+      <h2>Work with an agent</h2>
+      <p>
+        Choose <strong>Copy prompt for agent</strong> and paste the instructions into your agent
+        chat. The agent opens your SVG or Android VectorDrawable XML in the editor. Review the
+        import notes, adjust the artwork, then tell the agent when you are finished.
+      </p>
+      <p>
+        An agent with browser access can return to the same tab and get the current export using
+        View XML or Download. The prompt does not grant browser access. If the agent cannot access
+        that tab, download the result and give it the file. For Android resource references, also
+        import your light-mode colors.xml.
+      </p>
+      <p>
+        Import links use <code>#v=1&amp;name=illustration.svg&amp;encoding=gzip&amp;data=…</code>.
+        The full link can contain up to 65,536 characters; decompressed artwork can contain up to
+        5,000,000 bytes. Use Paste XML or Import vectors if the link is too large.
+      </p>
+      <p>
+        A link contains the artwork and is not encrypted. Anyone with the link can read it. After
+        importing, the editor clears the fragment from the address bar. Save a workspace before
+        refreshing or closing the tab.
+      </p>
       <h2>Know the limits</h2>
       <p>
         Use static SVG; expand symbols and use instances first. Scripts, external resources and

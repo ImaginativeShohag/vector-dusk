@@ -1,6 +1,6 @@
 {
   "name": "vector-dusk",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "license": "MIT",
   "description": "Local-first dark palette editor for SVG and Android VectorDrawable artwork",
@@ -12,9 +12,16 @@
     "test": "node run-tests.mjs",
     "test:site": "node site-tests.mjs && node run-tests.mjs --site",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "eval": "./evals/codex.sh exec --help > /dev/null && PROMPTFOO_CONFIG_DIR=.promptfoo PROMPTFOO_DISABLE_TELEMETRY=1 promptfoo eval -c evals/promptfooconfig.yaml --no-cache --no-share",
+    "eval:workflow": "./evals/codex.sh exec --help > /dev/null && PROMPTFOO_CONFIG_DIR=.promptfoo PROMPTFOO_DISABLE_TELEMETRY=1 promptfoo eval -c evals/workflow.yaml --no-cache --no-share",
+    "eval:validate": "node evals/check-fixtures.mjs && PROMPTFOO_CONFIG_DIR=.promptfoo PROMPTFOO_DISABLE_TELEMETRY=1 promptfoo validate config -c evals/promptfooconfig.yaml && PROMPTFOO_CONFIG_DIR=.promptfoo PROMPTFOO_DISABLE_TELEMETRY=1 promptfoo validate config -c evals/workflow.yaml",
+    "eval:view": "PROMPTFOO_CONFIG_DIR=.promptfoo PROMPTFOO_DISABLE_TELEMETRY=1 promptfoo view"
   },
   "devDependencies": {
-    "prettier": "3.8.3"
+    "fast-xml-parser": "5.11.2",
+    "node": "22.22.0",
+    "prettier": "3.8.3",
+    "promptfoo": "0.123.1"
   }
 }

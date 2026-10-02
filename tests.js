@@ -1244,6 +1244,228 @@
     }
   });
 
+  const agentSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><!-- বাংলা &amp; + # --><path fill="#123456" d="M0 0h24v24z"/></svg>';
+  async function agentPayload(source) {
+    const compressed = new Blob([source]).stream().pipeThrough(new CompressionStream('gzip'));
+    const bytes = new Uint8Array(await new Response(compressed).arrayBuffer());
+    return btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''))
+      .replaceAll('+', '-')
+      .replaceAll('/', '_')
+      .replace(/=+$/, '');
+  }
+  async function agentFrame(fragment, check, expectError = false) {
+    const frame = document.createElement('iframe');
+    frame.src = `index.html#${fragment}`;
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    document.body.append(frame);
+    try {
+      await loaded;
+      const doc = frame.contentDocument;
+      const status = doc.getElementById('status');
+      if (fragment.startsWith('v=')) {
+        await new Promise((resolve, reject) => {
+          const observer = new MutationObserver(finish);
+          const timeout = setTimeout(() => {
+            observer.disconnect();
+            reject(new Error('Agent import did not finish: ' + status.textContent));
+          }, 3000);
+          function finish() {
+            if (
+              !(expectError
+                ? status.classList.contains('error')
+                : status.textContent.startsWith('Artwork loaded.'))
+            )
+              return;
+            clearTimeout(timeout);
+            observer.disconnect();
+            resolve();
+          }
+          observer.observe(status, { childList: true, attributes: true, subtree: true });
+          finish();
+        });
+      }
+      await check(doc, frame.contentWindow);
+    } finally {
+      frame.remove();
+    }
+  }
+  await test('Agent prompt copies a clean editor URL and offers selected text when clipboard fails', async () => {
+    await agentFrame('editor', async (doc, win) => {
+      equal(win.location.hash, '#editor');
+      equal(doc.getElementById('asset-count').textContent, '1');
+      let copied;
+      Object.defineProperty(win.navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async (text) => (copied = text) },
+      });
+      const button = doc.getElementById('copy-agent-prompt');
+      ok(button, 'Missing Copy prompt for agent button');
+      await button.onclick();
+      ok(copied.includes(win.location.href.split('#')[0]), 'Missing current editor URL');
+      ok(!copied.includes(win.location.href), 'Prompt includes editor fragment');
+      for (const pattern of [
+        /v=1|v:\s*['"]1['"]/,
+        /gzip/i,
+        /base64url/i,
+        /65,?536/,
+        /same tab/i,
+        /finaliz/i,
+        /wait/i,
+      ])
+        ok(pattern.test(copied), `Missing prompt instruction: ${pattern}`);
+      win.navigator.clipboard.writeText = async () => {
+        throw new Error('Denied');
+      };
+      await button.onclick();
+      const text = doc.getElementById('agent-prompt-text');
+      equal(doc.getElementById('agent-prompt-dialog').open, true);
+      equal(text.value, copied);
+      equal(doc.activeElement, text);
+      equal(text.selectionStart, 0);
+      equal(text.selectionEnd, text.value.length);
+    });
+  });
+  await test('Agent links import gzip SVG and text Android XML, replace the demo and export current edits', async () => {
+    for (const [name, source, encoding] of [
+      ['folder/agent.svg', agentSvg, 'gzip'],
+      ['folder/agent.xml', wrap(path('#123456')), 'text'],
+      ['agent.xml', wrap(path('#123456')), null],
+    ]) {
+      const params = new URLSearchParams({
+        v: '1',
+        name,
+        data: encoding === 'gzip' ? await agentPayload(source) : source,
+      });
+      if (encoding) params.set('encoding', encoding);
+      await agentFrame(params.toString(), (doc, win) => {
+        equal(win.location.hash, '');
+        equal(doc.getElementById('asset-count').textContent, '1');
+        equal(doc.getElementById('asset-name').textContent, name.split('/').pop());
+        const input = doc.getElementById('target-hex');
+        input.value = '#ABCDEF';
+        input.dispatchEvent(new win.Event('input', { bubbles: true }));
+        doc.getElementById('show-xml').click();
+        const output = doc.getElementById('export-xml').value;
+        equal(V.parseVector(output).uses[0].key, '#ABCDEF');
+        ok(
+          output.includes(name.endsWith('.svg') ? '<svg' : '<vector'),
+          'Export changed file format',
+        );
+        if (name.endsWith('.svg')) ok(output.includes('বাংলা'), 'Unicode source lost');
+      });
+    }
+  });
+  await test('Invalid agent links retain their payload and demo, including both size limits', async () => {
+    const valid = { v: '1', name: 'agent.svg', data: agentSvg };
+    const invalidUtf8 = new Uint8Array([
+      ...new TextEncoder().encode(agentSvg.replace('</svg>', '<!--')),
+      255,
+      ...new TextEncoder().encode('--></svg>'),
+    ]);
+    const fragments = [
+      new URLSearchParams({ ...valid, v: '2' }).toString(),
+      new URLSearchParams({ ...valid, encoding: 'zip' }).toString(),
+      new URLSearchParams({ v: '1', name: 'agent.svg' }).toString(),
+      new URLSearchParams({ v: '1', data: agentSvg }).toString(),
+      new URLSearchParams(valid).toString() + '&v=1',
+      new URLSearchParams(valid).toString() + '&data=extra',
+      new URLSearchParams({ ...valid, encoding: 'gzip', data: '%' }).toString(),
+      new URLSearchParams({ ...valid, encoding: 'gzip', data: 'YWJj' }).toString(),
+      new URLSearchParams({
+        ...valid,
+        encoding: 'gzip',
+        data: await agentPayload(invalidUtf8),
+      }).toString(),
+      new URLSearchParams({ ...valid, data: '<svg>' }).toString(),
+      new URLSearchParams({
+        ...valid,
+        encoding: 'gzip',
+        data: await agentPayload(' '.repeat(5000001)),
+      }).toString(),
+      new URLSearchParams({ ...valid, data: 'x'.repeat(65536) }).toString(),
+    ];
+    for (const fragment of fragments) {
+      await agentFrame(
+        fragment,
+        (doc, win) => {
+          equal(win.location.hash, '#' + fragment);
+          equal(doc.getElementById('asset-count').textContent, '1');
+          equal(doc.getElementById('asset-name').textContent, 'sample_bookshelf.xml');
+          ok(doc.getElementById('status').classList.contains('error'), 'Missing import error');
+        },
+        true,
+      );
+    }
+  });
+  await test('Agent loading blocks document file drops without changing the workspace', async () => {
+    await agentFrame('editor', async (doc, win) => {
+      doc.getElementById('editor').inert = true;
+      const status = doc.getElementById('status').textContent;
+      const transfer = new win.DataTransfer();
+      const file = new win.File([wrap(path('#123456'))], 'dropped.xml');
+      let read = false;
+      file.text = () => {
+        read = true;
+        return Promise.resolve(wrap(path('#123456')));
+      };
+      transfer.items.add(file);
+      const event = new win.DragEvent('drop', { dataTransfer: transfer, cancelable: true });
+      doc.dispatchEvent(event);
+      await new Promise((resolve) => win.setTimeout(resolve, 0));
+      equal(event.defaultPrevented, true);
+      equal(read, false);
+      equal(doc.getElementById('asset-count').textContent, '1');
+      equal(doc.getElementById('asset-name').textContent, 'sample_bookshelf.xml');
+      equal(doc.getElementById('status').textContent, status);
+    });
+  });
+  await test('Agent import does not apply a saved palette or resource definitions', async () => {
+    const keys = ['vector-studio.profiles.v1', 'vector-studio.last-profile.v1'];
+    const previous = keys.map((key) => localStorage.getItem(key));
+    const profile = {
+      version: 1,
+      kind: 'vector-dark-palette',
+      name: 'Agent isolation',
+      mappings: { '#123456': '#FEDCBA' },
+      resources: { '@color/brand': '#123456' },
+      background: '#171923',
+    };
+    try {
+      localStorage.setItem(keys[0], JSON.stringify([profile]));
+      localStorage.setItem(keys[1], profile.name);
+      await agentFrame(
+        new URLSearchParams({ v: '1', name: 'agent.svg', data: agentSvg }).toString(),
+        async (doc, win) => {
+          ok(
+            doc.getElementById('target-hex').value !== '#FEDCBA',
+            'Saved palette applied silently',
+          );
+          ok(
+            !doc.getElementById('resource-count').textContent.startsWith('1'),
+            'Saved resources applied silently',
+          );
+          let download;
+          win.HTMLAnchorElement.prototype.click = function () {};
+          win.URL.createObjectURL = (blob) => {
+            download = blob;
+            return 'blob:agent-test';
+          };
+          doc.getElementById('export-profile').click();
+          const exported = JSON.parse(await download.text());
+          equal(exported.resources, {});
+          ok(exported.mappings['#123456'] !== '#FEDCBA', 'Export inherited saved palette');
+        },
+      );
+    } finally {
+      keys.forEach((key, index) =>
+        previous[index] === null
+          ? localStorage.removeItem(key)
+          : localStorage.setItem(key, previous[index]),
+      );
+    }
+  });
+
   const failures = results.filter((r) => r.startsWith('FAIL')).length;
   document.querySelector('#results').textContent =
     results.join('\n') + `\n${results.length - failures}/${results.length} passed`;
