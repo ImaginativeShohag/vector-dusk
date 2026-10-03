@@ -215,31 +215,22 @@
               </div>
               <div id="tone-ramps"></div>
             </section>
-            <div class="scope-switches" role="group" aria-labelledby="scope-heading">
-              <p id="scope-heading" class="field-label">Changes apply to the palette by default</p>
-              <label class="switch"
-                ><input
-                  id="separate-image"
-                  type="checkbox"
-                  role="switch"
-                  aria-describedby="scope-impact"
-                />
-                Edit this illustration separately</label
+            <fieldset class="scope-options" aria-describedby="scope-impact">
+              <legend id="scope-heading" class="field-label">Change color in</legend>
+              <label class="scope-option"
+                ><input id="scope-palette" type="radio" name="scope" value="palette" /> All
+                illustrations <span id="scope-palette-count" class="scope-count"></span
+              ></label>
+              <label class="scope-option"
+                ><input id="scope-image" type="radio" name="scope" value="image" /> This
+                illustration <span id="scope-image-count" class="scope-count"></span
+              ></label>
+              <label id="scope-shape-option" class="scope-option"
+                ><input id="scope-shape" type="radio" name="scope" value="shape" /> Only the clicked
+                shape</label
               >
-              <label class="switch"
-                ><input
-                  id="use-only"
-                  type="checkbox"
-                  role="switch"
-                  aria-describedby="scope-impact"
-                />
-                Selected use only</label
-              >
-            </div>
+            </fieldset>
             <p id="scope-impact" class="editor-tip" role="status"></p>
-            <label id="use-label" class="field-label" for="selected-use" hidden
-              >Fill, stroke or gradient stop</label
-            ><select id="selected-use" hidden></select>
             <div class="editor-actions">
               <button id="keep-original">Keep original</button
               ><button id="reset-color" class="quiet">Reset override</button>

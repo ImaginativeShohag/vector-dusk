@@ -295,8 +295,8 @@
       el('target-hex').dispatchEvent(new frame.contentWindow.Event('input', { bubbles: true }));
       el('target-hex').dispatchEvent(new frame.contentWindow.Event('change', { bubbles: true }));
     };
-    equal(el('separate-image').checked, false);
-    equal(el('use-only').checked, false);
+    equal(el('scope-palette').checked, true);
+    equal(el('scope-shape-option').hidden, true, 'Single-use color offers the clicked shape');
 
     // When: edit with the default scope. Then: both illustrations share the replacement.
     type('#556677');
@@ -306,7 +306,7 @@
     el('asset-list').querySelectorAll('.asset')[1].click();
 
     // When: switch the second illustration to separate editing and change it.
-    el('separate-image').click();
+    el('scope-image').click();
     ok(el('scope-impact').textContent.includes('this illustration only'), 'Scope text unchanged');
     type('#ABCDEF');
 
@@ -323,12 +323,12 @@
         .textContent,
       firstColor,
     );
-    equal(el('separate-image').checked, false, 'Separate switch is per illustration');
+    equal(el('scope-image').checked, false, 'Separate scope is per illustration');
     el('asset-list').querySelectorAll('.asset')[1].click();
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#ABCDEF');
-    equal(el('separate-image').checked, true);
+    equal(el('scope-image').checked, true);
     // When: turn separation off. Then: earlier edits stay until the toast action drops them.
-    el('separate-image').click();
+    el('scope-palette').click();
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#ABCDEF');
     equal(el('toast-action').textContent, 'Use palette colors');
     el('toast-action').click();
@@ -395,7 +395,7 @@
     // Then: saved mapping is reused automatically.
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#A1B2C3');
     // When / Then: image overrides do not change the shared profile.
-    el('separate-image').click();
+    el('scope-image').click();
     input('target-hex', '#445566');
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#445566');
     // When / Then: exported profiles must not learn an image-only override.
@@ -613,7 +613,7 @@
       new win.File(
         [
           svgWrap(
-            '<rect width="100" height="100" fill="#3f3d56"/><circle cx="50" cy="50" r="20" fill="#ff000080"/>',
+            '<rect width="100" height="100" fill="#3f3d56"/><circle cx="50" cy="50" r="20" fill="#ff000080"/><circle cx="20" cy="20" r="5" fill="#ff000080"/>',
           ),
         ],
         'artwork.svg',
@@ -654,7 +654,13 @@
       'Mixed export lost format-specific filenames',
     );
     // When / Then: selected-use overrides, SVGs, and Android XML survive workspace import.
-    el('use-only').click();
+    el('scope-shape').click();
+    input('target-hex', '#ABCDEF80');
+    equal(el('status').textContent, 'Click a shape in the artwork to choose it.');
+    el('dark-preview')
+      .querySelector('circle')
+      .dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    ok(el('scope-impact').textContent.startsWith('Affects only the clicked shape'), 'No pick');
     input('target-hex', '#ABCDEF80');
     el('save-workspace').click();
     const workspace = JSON.parse(await download.text());
@@ -722,8 +728,11 @@
     el('paste-open').click();
     el('xml-input').value = wrap(path('#2F2E41') + path('#2F2E41'));
     el('paste-import').click();
-    // When: apply a tint only to the selected use.
-    el('use-only').click();
+    // When: apply a tint only to the clicked shape.
+    el('dark-preview')
+      .querySelector('path[data-node]')
+      .dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    el('scope-shape').click();
     const ramp = el('tone-ramps');
     ok(ramp, 'Generated palette is missing');
     equal(ramp.querySelectorAll('button').length, 20);
@@ -977,14 +986,14 @@
         .querySelector('[data-node]')
         .dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
       ok(el('palette-list').querySelector('.active.feedback-flash'), 'Missing selection feedback');
-      el('separate-image').click();
+      el('scope-image').click();
       el('tone-ramps').querySelectorAll('button')[1].click();
       const selected = el('tone-ramps').querySelector('[aria-pressed="true"] .tone-check');
       ok(
         selected && win.getComputedStyle(selected).display !== 'none',
         'Missing selected tone check',
       );
-      el('separate-image').click();
+      el('scope-palette').click();
       ok(
         el('scope-impact').textContent.startsWith('Affects 1 illustration.'),
         'Scope includes overridden illustration',
@@ -1060,7 +1069,7 @@
       has(el('asset-count'), 'count-roll');
       has(el('toast'), 'open');
       // When: a replacement is typed. Then: only the palette swatch blends.
-      el('separate-image').click();
+      el('scope-image').click();
       el('target-hex').value = '#A1B2C3';
       fire('target-hex', 'input');
       const target = el('palette-list').querySelector(
@@ -1081,12 +1090,12 @@
       el('redo').click();
       has(el('redo'), 'nudge-forward');
       // Scope changes mark exactly the illustrations the next edit would change.
-      el('separate-image').click();
+      el('scope-palette').click();
       has(el('scope-impact'), 'status-in');
       ok(el('scope-impact').textContent.startsWith('Affects 2 illustrations.'), 'Wrong impact');
       equal(el('asset-list').querySelectorAll('.asset.feedback-flash').length, 2);
       // The active illustration has an override, so test its pick cue at illustration scope.
-      el('separate-image').click();
+      el('scope-image').click();
       el('tone-ramps').querySelectorAll('button')[2].click();
       ok(el('tone-ramps').querySelector('.tone-button.picked[aria-pressed="true"]'), 'No pick cue');
       const pill = win.getComputedStyle(el('tone-steps'), '::before');
@@ -1753,7 +1762,7 @@
       });
       const thumbs = () => [...el('asset-list').querySelectorAll('.asset-preview svg')];
       const [first, second] = thumbs();
-      el('separate-image').click();
+      el('scope-image').click();
       el('target-hex').value = '#ABCDEF';
       el('target-hex').dispatchEvent(new win.Event('input'));
       equal(thumbs()[1], second, 'Untouched thumbnail was rebuilt');
@@ -1791,7 +1800,7 @@
         },
       });
       el('asset-list').querySelectorAll('.asset')[1].click();
-      el('separate-image').click();
+      el('scope-image').click();
       el('keep-original').click();
       // When: remove the edited illustration.
       el('asset-list').querySelectorAll('.asset-remove')[1].click();
@@ -1803,7 +1812,7 @@
       el('toast-action').click();
       equal(el('asset-count').textContent, '2');
       equal(el('asset-name').textContent, 'two.xml');
-      equal(el('separate-image').checked, true);
+      equal(el('scope-image').checked, true);
       equal(el('mapping-origin').textContent, 'Original kept');
       equal(el('undo').disabled, false);
       ok(doc.querySelector('.asset.active'), 'Restored illustration not active');

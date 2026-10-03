@@ -13,6 +13,8 @@
     selected: '',
     use: '',
     useOnly: false,
+    // The use last clicked in the artwork; "Only the clicked shape" edits need one.
+    pickedUse: '',
     toneSteps: 10,
     mappings: {},
     resources: {},
@@ -32,9 +34,16 @@
   const activeAsset = () => state.assets[state.active];
   /** Where an edit lands: one fill or stroke, this illustration only, or the shared palette. */
   function editScope() {
-    if (state.useOnly) return 'shape';
+    if (state.useOnly && shapeScopeAvailable()) return 'shape';
     return activeAsset()?.separate ? 'image' : 'palette';
   }
+  /** A single-use color edits the same shape either way, unless that use already has its own color. */
+  function shapeScopeAvailable() {
+    const asset = activeAsset();
+    const uses = selectedPaletteEntry()?.uses || [];
+    return uses.length > 1 || (!!asset && own(asset.uses, state.use));
+  }
+  const shapePicked = () => !!state.use && state.pickedUse === state.use;
   const element = (tag, className, text) => {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -328,6 +337,11 @@
   }
   function edit(target, { keepInput = false, gesture = null, deferred = false } = {}) {
     if (!activeAsset() || !state.selected) return;
+    if (editScope() === 'shape' && !shapePicked()) {
+      status('Click a shape in the artwork to choose it.', 'info');
+      render();
+      return;
+    }
     recordEdit(gesture);
     if (editScope() === 'shape') activeAsset().uses[state.use] = target;
     else if (editScope() === 'image') activeAsset().overrides[state.selected] = target;
@@ -358,6 +372,7 @@
   }
   function selectColor(key, use = '') {
     state.selected = key;
+    state.pickedUse = use;
     state.use = use || selectedPaletteEntry()?.uses[0]?.id || '';
     render();
   }
@@ -384,7 +399,9 @@
     const warnings = new Set();
     const palette = selectedPaletteEntry();
     const selectedUses =
-      editScope() === 'shape' ? palette?.uses.filter((u) => u.id === state.use) : palette?.uses;
+      editScope() !== 'shape'
+        ? palette?.uses
+        : palette?.uses.filter((u) => shapePicked() && u.id === state.use);
     const selectedNodes = new Set(
       (selectedUses || []).flatMap((u) => {
         if (asset.model.format === 'svg') return vectorTools.svgNodesForUse(asset.model, u);
@@ -527,14 +544,13 @@
   }
   function renderAssets() {
     const list = getElement('asset-list');
-    // Measure before replacing cards so moved cards and the active marker glide into place.
+    // Measure before replacing cards so moved cards glide into place.
     const before = new Map(
       [...list.querySelectorAll('.asset-card')].map((card) => [
         card.dataset.name,
         card.getBoundingClientRect().left,
       ]),
     );
-    const previousActive = list.querySelector('.asset.active')?.parentElement.dataset.name;
     const resources = JSON.stringify(state.resources);
     list.replaceChildren(
       ...state.assets.map((asset, index) => {
@@ -552,6 +568,7 @@
           if (!palette.some((p) => p.key === state.selected))
             state.selected = palette[0]?.key || '';
           state.use = selectedPaletteEntry()?.uses[0]?.id || '';
+          state.pickedUse = '';
           render();
         };
         const card = element('div', 'asset-card');
@@ -571,19 +588,6 @@
       const offset = before.get(card.dataset.name) - left;
       if (offset)
         animate(card, [{ transform: `translateX(${offset}px)` }, { transform: 'none' }], glide);
-      if (
-        card.dataset.name === activeAsset().name &&
-        before.has(previousActive) &&
-        previousActive !== card.dataset.name
-      )
-        animate(
-          card,
-          [
-            { transform: `translateX(${before.get(previousActive) - left}px)` },
-            { transform: 'none' },
-          ],
-          { ...glide, pseudoElement: '::after' },
-        );
     }
   }
   const paletteTargets = { asset: null, colors: new Map() };
@@ -691,9 +695,9 @@
       container.append(group);
     }
   }
-  /** Collection indices a replacement at the current scope would change. */
-  function affectedAssets() {
-    if (editScope() !== 'palette') return [state.active];
+  /** Collection indices a replacement at the given scope would change. */
+  function affectedAssets(scope = editScope()) {
+    if (scope !== 'palette') return [state.active];
     return state.assets.flatMap((item, index) =>
       !own(item.overrides, state.selected) &&
       vectorTools
@@ -730,24 +734,23 @@
       asset.model.format === 'svg'
         ? 'SVG hex · alpha last: #RRGGBBAA'
         : 'Android hex · alpha first: #AARRGGBB';
-    getElement('separate-image').checked = !!asset.separate;
-    getElement('use-only').checked = state.useOnly;
-    const affected = affectedAssets().length;
+    const scope = editScope();
+    const affected = affectedAssets('palette').length;
+    const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+    getElement('scope-heading').textContent = `Change ${displayColor(state.selected)} in`;
+    getElement(`scope-${scope}`).checked = true;
+    getElement('scope-palette-count').textContent = `· ${plural(affected, 'illustration')}`;
+    getElement('scope-image-count').textContent = `· ${plural(color.uses.length, 'place')}`;
+    getElement('scope-shape-option').hidden = !shapeScopeAvailable();
+    const picked = color.uses.find((use) => shapePicked() && use.id === state.use);
     getElement('scope-impact').textContent =
-      editScope() === 'shape'
-        ? 'Affects selected use only.'
-        : editScope() === 'image'
+      scope === 'shape'
+        ? picked
+          ? `Affects only the clicked shape (${picked.label}).`
+          : 'Click a shape in the artwork to choose it.'
+        : scope === 'image'
           ? 'Affects this illustration only. Colors you have not changed here still follow the palette.'
-          : `Affects ${affected} illustration${affected === 1 ? '' : 's'}. Separately edited colors stay unchanged.`;
-    getElement('selected-use').replaceChildren(
-      ...color.uses.map((use) => {
-        const option = element('option', '', use.label);
-        option.value = use.id;
-        return option;
-      }),
-    );
-    getElement('selected-use').value = state.use;
-    getElement('selected-use').hidden = getElement('use-label').hidden = editScope() !== 'shape';
+          : `Affects ${plural(affected, 'illustration')}. Separately edited colors stay unchanged.`;
     const origin =
       editScope() === 'shape' && own(asset.uses, state.use)
         ? 'Selected use'
@@ -1090,14 +1093,16 @@
         for (const index of affectedAssets()) flash(cards[index]);
       }
     };
-    getElement('separate-image').onchange = (event) => {
+    const setScope = (scope) => {
       const asset = activeAsset();
       if (!asset) return;
-      asset.separate = event.target.checked;
-      state.workspaceDirty = true;
+      state.useOnly = scope === 'shape';
+      const wasSeparate = !!asset.separate;
+      if (scope !== 'shape') asset.separate = scope === 'image';
+      if (!!asset.separate !== wasSeparate) state.workspaceDirty = true;
       showScopeChange();
       const custom = Object.keys(asset.overrides).length;
-      if (asset.separate || !custom) return;
+      if (!wasSeparate || asset.separate || !custom) return;
       // Turning separation off keeps earlier edits; offer to drop them in one step.
       status(
         `${asset.name} keeps ${custom} separately edited color${custom === 1 ? '' : 's'}. New changes apply to the palette.`,
@@ -1114,14 +1119,8 @@
         },
       );
     };
-    getElement('use-only').onchange = (event) => {
-      state.useOnly = event.target.checked;
-      showScopeChange();
-    };
-    getElement('selected-use').onchange = (event) => {
-      state.use = event.target.value;
-      render();
-    };
+    for (const scope of ['palette', 'image', 'shape'])
+      getElement(`scope-${scope}`).onchange = () => setScope(scope);
     getElement('highlight').onchange = () => {
       renderPreviews();
       if (getElement('highlight').checked) revealHighlight();
