@@ -38,9 +38,19 @@
         transparency is preserved.
       </p>
       <p>
-        Apply changes to the shared palette, this illustration, or a selected fill, stroke or
-        gradient stop. Individual overrides take priority. Keep original protects a color; Reset
-        override removes the current override. Undo and Redo reverse edits.
+        Changes apply to the shared palette, so every illustration stays consistent. Switch on
+        <strong>Edit this illustration separately</strong> to keep the active illustration’s changes
+        to itself; colors you have not changed there still follow the palette. Switching it off
+        keeps those edits and offers <strong>Use palette colors</strong> to drop them.
+        <strong>Selected use only</strong> narrows a change to one fill, stroke or gradient stop.
+        Individual overrides take priority. Keep original protects a color; Reset override removes
+        the current override.
+      </p>
+      <p>
+        Undo and Redo reverse edits. A picker drag or a typed hex value counts as one step. Typed
+        hex applies once it has six or eight digits; short forms such as <code>#ABC</code> apply
+        when you press Enter or leave the field. Removing an illustration shows an Undo button in
+        its message.
       </p>
       <p>
         Eight-digit hex uses <code>#RRGGBBAA</code> for SVG and <code>#AARRGGBB</code> for Android.
@@ -50,7 +60,8 @@
       <ul>
         <li>
           <strong>Save profile:</strong> shared colors in this browser. Export profile downloads a
-          portable copy.
+          portable copy. Saving under the name of a different saved profile asks before replacing
+          it. Delete removes the selected saved profile, with Undo in the message.
         </li>
         <li>
           <strong>Save workspace:</strong> downloads artwork, palette and individual overrides. Use

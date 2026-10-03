@@ -1395,7 +1395,20 @@
     toast.addEventListener('mouseleave', scheduleToastClose);
     toast.addEventListener('focusin', () => clearTimeout(toastTimer));
     toast.addEventListener('focusout', scheduleToastClose);
-    let dragDepth = 0;
+    const dropOverlay = getElement('drop-overlay');
+    let dropOverlayTimer;
+    const hideDropOverlay = () => {
+      clearTimeout(dropOverlayTimer);
+      dropOverlay.hidden = true;
+    };
+    // Browsers can skip dragleave or drop, such as after a refused drop or Escape, so a
+    // dragenter/dragleave count can stick. The overlay stays only while dragover keeps firing,
+    // which the HTML spec requires at least every 550 ms during a drag.
+    const showDropOverlay = () => {
+      dropOverlay.hidden = false;
+      clearTimeout(dropOverlayTimer);
+      dropOverlayTimer = setTimeout(hideDropOverlay, 600);
+    };
     const hasFiles = (event) => [...(event.dataTransfer?.types || [])].includes('Files');
     // Files dropped while a dialog is open or an agent link loads would land behind it unseen.
     const dropBlocked = () =>
@@ -1403,27 +1416,30 @@
     document.addEventListener('dragenter', (event) => {
       if (!hasFiles(event) || dropBlocked()) return;
       event.preventDefault();
-      dragDepth++;
-      getElement('drop-overlay').hidden = false;
+      showDropOverlay();
     });
     document.addEventListener('dragover', (event) => {
       if (!hasFiles(event)) return; // Text drags keep their default, such as inserting into a field.
       event.preventDefault(); // Without this the browser opens the file and leaves the editor.
-      if (dropBlocked()) event.dataTransfer.dropEffect = 'none';
-    });
-    document.addEventListener('dragleave', () => {
-      if (--dragDepth <= 0) {
-        dragDepth = 0;
-        getElement('drop-overlay').hidden = true;
+      if (dropBlocked()) {
+        event.dataTransfer.dropEffect = 'none';
+        hideDropOverlay();
+        return;
       }
+      event.dataTransfer.dropEffect = 'copy';
+      showDropOverlay();
+    });
+    document.addEventListener('dragleave', (event) => {
+      // Moving between elements also fires dragleave; only leaving the window hides at once.
+      const { clientX: x, clientY: y } = event;
+      if (x <= 0 || y <= 0 || x >= innerWidth || y >= innerHeight) hideDropOverlay();
     });
     document.addEventListener(
       'drop',
       reportErrors(async (event) => {
         if (!hasFiles(event)) return;
         event.preventDefault();
-        dragDepth = 0;
-        getElement('drop-overlay').hidden = true;
+        hideDropOverlay();
         if (dropBlocked()) return;
         await readFiles([...event.dataTransfer.files]);
       }),

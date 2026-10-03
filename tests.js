@@ -1858,6 +1858,50 @@
     }
   });
 
+  await test('The drop overlay clears when the browser skips dragleave or drop', async () => {
+    const { frame, el, win, doc } = await editorFrame();
+    const drag = (type, init = {}) => {
+      const event = new win.DragEvent(type, { bubbles: true, cancelable: true, ...init });
+      doc.body.dispatchEvent(event);
+      return event;
+    };
+    const wait = (ms) => new Promise((resolve) => win.setTimeout(resolve, ms));
+    try {
+      const files = new win.DataTransfer();
+      files.items.add(new win.File([wrap(path('#123456'))], 'late.xml'));
+      // When: the pointer crosses nested elements, so dragenter outnumbers dragleave.
+      const inside = { dataTransfer: files, clientX: 200, clientY: 200 };
+      drag('dragenter', inside);
+      drag('dragenter', inside);
+      drag('dragleave', inside);
+      // Then: the overlay shows, and dragover accepts the files as a copy.
+      equal(el('drop-overlay').hidden, false);
+      const over = drag('dragover', inside);
+      equal(over.defaultPrevented, true);
+      equal(files.dropEffect, 'copy');
+      // When: dragover keeps firing. Then: the overlay stays.
+      await wait(400);
+      drag('dragover', inside);
+      await wait(400);
+      equal(el('drop-overlay').hidden, false);
+      // When: the drag ends without a drop or a final dragleave. Then: the overlay clears.
+      await wait(700);
+      equal(el('drop-overlay').hidden, true);
+      // When: the pointer leaves the window. Then: the overlay clears at once.
+      drag('dragenter', inside);
+      drag('dragleave', { dataTransfer: files, clientX: -1, clientY: 200 });
+      equal(el('drop-overlay').hidden, true);
+      // When: a later drag drops a file. Then: it is imported.
+      drag('dragenter', inside);
+      drag('drop', inside);
+      equal(el('drop-overlay').hidden, true);
+      await wait(20);
+      equal(el('asset-name').textContent, 'late.xml');
+    } finally {
+      frame.remove();
+    }
+  });
+
   const failures = results.filter((r) => r.startsWith('FAIL')).length;
   document.querySelector('#results').textContent =
     results.join('\n') + `\n${results.length - failures}/${results.length} passed`;

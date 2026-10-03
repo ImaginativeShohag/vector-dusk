@@ -8,7 +8,7 @@
 
 ## What it does
 
-- **Edit at the right scope.** Change one color use, one illustration, or the shared palette across a collection.
+- **One palette for every illustration.** Edits apply to the shared palette by default. Turn on **Edit this illustration separately** to tune one illustration, or **Selected use only** for a single fill, stroke or gradient stop.
 - **Build consistent dark palettes.** Adjust replacements directly or explore tints and shades.
 - **Work with Android resources.** Import VectorDrawable XML and light-mode `colors.xml` references; export dark resources under their original filenames.
 - **Keep your work portable.** Save a profile for shared colors, or download a workspace containing artwork and overrides.
@@ -28,8 +28,8 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Keep the terminal running w
 ## Editing workflow
 
 1. Import SVG or Android VectorDrawable XML, or paste the artwork. For Android resource references, import the corresponding light-mode `colors.xml`.
-2. Select a color, choose a replacement or tint/shade, and set the scope to **this use**, **this illustration**, or **all illustrations**.
-3. Save a **profile** to retain shared palette settings in this browser. Save a **workspace** to download the artwork and all overrides; reopen either exported JSON file with **Import JSON**.
+2. Select a color and choose a replacement or tint/shade. Changes reach all illustrations unless you switch on **Edit this illustration separately** or **Selected use only**. A picker drag or typed hex value is one undo step; removing an illustration can be undone from its message.
+3. Save a **profile** to retain shared palette settings in this browser. Saving over a different profile with the same name asks first, and **Delete** removes the selected saved profile (with Undo). Save a **workspace** to download the artwork and all overrides; reopen either exported JSON file with **Import JSON**.
 4. Export one file or the collection ZIP. Place exported Android XML files in `res/drawable-night/` using their original filenames.
 
 Save a workspace before closing or refreshing the page. Profiles do not contain artwork.
