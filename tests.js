@@ -270,7 +270,7 @@
     }
   });
 
-  await test('Editing one illustration leaves another illustration and its dark palette unchanged', async () => {
+  await test('Edits reach every illustration by default; the separate switch isolates one illustration', async () => {
     // Given: two illustrations use the same source color.
     const frame = document.createElement('iframe');
     frame.src = 'index.html';
@@ -290,10 +290,25 @@
       '.palette-row .color-cell:last-child .color-text',
     ).textContent;
     add('second.xml');
+    const type = (value) => {
+      el('target-hex').value = value;
+      el('target-hex').dispatchEvent(new frame.contentWindow.Event('input', { bubbles: true }));
+      el('target-hex').dispatchEvent(new frame.contentWindow.Event('change', { bubbles: true }));
+    };
+    equal(el('separate-image').checked, false);
+    equal(el('use-only').checked, false);
 
-    // When: change the active illustration without changing the scope.
-    el('target-hex').value = '#ABCDEF';
-    el('target-hex').dispatchEvent(new frame.contentWindow.Event('input', { bubbles: true }));
+    // When: edit with the default scope. Then: both illustrations share the replacement.
+    type('#556677');
+    el('asset-list').querySelectorAll('.asset')[0].click();
+    equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#556677');
+    el('undo').click();
+    el('asset-list').querySelectorAll('.asset')[1].click();
+
+    // When: switch the second illustration to separate editing and change it.
+    el('separate-image').click();
+    ok(el('scope-impact').textContent.includes('this illustration only'), 'Scope text unchanged');
+    type('#ABCDEF');
 
     // Then: each illustration keeps its own preview and palette replacement.
     equal(
@@ -308,7 +323,17 @@
         .textContent,
       firstColor,
     );
+    equal(el('separate-image').checked, false, 'Separate switch is per illustration');
     el('asset-list').querySelectorAll('.asset')[1].click();
+    equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#ABCDEF');
+    equal(el('separate-image').checked, true);
+    // When: turn separation off. Then: earlier edits stay until the toast action drops them.
+    el('separate-image').click();
+    equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#ABCDEF');
+    equal(el('toast-action').textContent, 'Use palette colors');
+    el('toast-action').click();
+    equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), firstColor);
+    el('undo').click();
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#ABCDEF');
     frame.remove();
   });
@@ -344,7 +369,6 @@
     // Then: original stays unchanged while dark preview updates.
     ok(el('asset-name').textContent.includes('test_vector.xml'), 'Imported asset not selected');
     equal(el('light-preview').querySelector('path[data-node]').getAttribute('fill'), '#3F3D56');
-    change('edit-scope', 'palette');
     input('target-hex', '#A1B2C3');
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#A1B2C3');
     equal(el('light-preview').querySelector('path[data-node]').getAttribute('fill'), '#3F3D56');
@@ -371,7 +395,7 @@
     // Then: saved mapping is reused automatically.
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#A1B2C3');
     // When / Then: image overrides do not change the shared profile.
-    change('edit-scope', 'image');
+    el('separate-image').click();
     input('target-hex', '#445566');
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#445566');
     // When / Then: exported profiles must not learn an image-only override.
@@ -398,10 +422,9 @@
     el('paste-open').click();
     el('xml-input').value = '<vector>broken';
     el('paste-import').click();
-    ok(
-      !el('paste-error').hidden && el('paste-error').textContent.length > 0,
-      'Malformed XML silently accepted',
-    );
+    const pasteCallout = el('paste-dialog').querySelector('.field-callout');
+    ok(pasteCallout?.textContent.length > 1, 'Malformed XML silently accepted');
+    equal(el('xml-input').getAttribute('aria-invalid'), 'true');
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#A1B2C3');
     el('paste-close').click();
     // When: reopen the downloaded workspace using the actual file input handler.
@@ -610,8 +633,6 @@
     equal(el('dark-preview').querySelector('rect').style.fill, 'rgb(161, 178, 195)');
     // When / Then: SVG input interprets alpha-last but saves canonical ARGB.
     doc.querySelector('[aria-label="Edit #FF000080"]').click();
-    el('edit-scope').value = 'palette';
-    el('edit-scope').dispatchEvent(new win.Event('change'));
     input('target-hex', '#11223380');
     let download;
     win.HTMLAnchorElement.prototype.click = function () {};
@@ -633,8 +654,7 @@
       'Mixed export lost format-specific filenames',
     );
     // When / Then: selected-use overrides, SVGs, and Android XML survive workspace import.
-    el('edit-scope').value = 'shape';
-    el('edit-scope').dispatchEvent(new win.Event('change'));
+    el('use-only').click();
     input('target-hex', '#ABCDEF80');
     el('save-workspace').click();
     const workspace = JSON.parse(await download.text());
@@ -703,8 +723,7 @@
     el('xml-input').value = wrap(path('#2F2E41') + path('#2F2E41'));
     el('paste-import').click();
     // When: apply a tint only to the selected use.
-    el('edit-scope').value = 'shape';
-    el('edit-scope').dispatchEvent(new win.Event('change'));
+    el('use-only').click();
     const ramp = el('tone-ramps');
     ok(ramp, 'Generated palette is missing');
     equal(ramp.querySelectorAll('button').length, 20);
@@ -958,14 +977,14 @@
         .querySelector('[data-node]')
         .dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
       ok(el('palette-list').querySelector('.active.feedback-flash'), 'Missing selection feedback');
+      el('separate-image').click();
       el('tone-ramps').querySelectorAll('button')[1].click();
       const selected = el('tone-ramps').querySelector('[aria-pressed="true"] .tone-check');
       ok(
         selected && win.getComputedStyle(selected).display !== 'none',
         'Missing selected tone check',
       );
-      el('edit-scope').value = 'palette';
-      el('edit-scope').dispatchEvent(new win.Event('change'));
+      el('separate-image').click();
       ok(
         el('scope-impact').textContent.startsWith('Affects 1 illustration.'),
         'Scope includes overridden illustration',
@@ -1039,8 +1058,9 @@
       });
       equal(doc.querySelectorAll('.asset-card.entering').length, 3);
       has(el('asset-count'), 'count-roll');
-      has(el('status'), 'status-in');
+      has(el('toast'), 'open');
       // When: a replacement is typed. Then: only the palette swatch blends.
+      el('separate-image').click();
       el('target-hex').value = '#A1B2C3';
       fire('target-hex', 'input');
       const target = el('palette-list').querySelector(
@@ -1061,14 +1081,12 @@
       el('redo').click();
       has(el('redo'), 'nudge-forward');
       // Scope changes mark exactly the illustrations the next edit would change.
-      el('edit-scope').value = 'palette';
-      fire('edit-scope', 'change');
+      el('separate-image').click();
       has(el('scope-impact'), 'status-in');
       ok(el('scope-impact').textContent.startsWith('Affects 2 illustrations.'), 'Wrong impact');
       equal(el('asset-list').querySelectorAll('.asset.feedback-flash').length, 2);
       // The active illustration has an override, so test its pick cue at illustration scope.
-      el('edit-scope').value = 'image';
-      fire('edit-scope', 'change');
+      el('separate-image').click();
       el('tone-ramps').querySelectorAll('button')[2].click();
       ok(el('tone-ramps').querySelector('.tone-button.picked[aria-pressed="true"]'), 'No pick cue');
       const pill = win.getComputedStyle(el('tone-steps'), '::before');
@@ -1202,6 +1220,80 @@
     }
   });
 
+  await test('Messages float in view: control errors point at the control, others use the toast', async () => {
+    // Given: a long editor scrolled to the top, far from the profile name and export bar.
+    const frame = document.createElement('iframe');
+    frame.src = 'index.html';
+    frame.style.cssText = 'width: 1200px; height: 600px';
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    document.body.append(frame);
+    await loaded;
+    const doc = frame.contentDocument,
+      win = frame.contentWindow;
+    const el = (id) => doc.getElementById(id);
+    const input = (id, value) => {
+      el(id).value = value;
+      el(id).dispatchEvent(new win.Event('input', { bubbles: true }));
+    };
+    const callout = () => doc.querySelector('.field-callout');
+    win.HTMLAnchorElement.prototype.click = function () {}; // Keep exports out of Downloads.
+    try {
+      // When: Export all runs without a profile name.
+      input('profile-name', '  ');
+      el('export-all').click();
+      await new Promise((resolve) => win.setTimeout(resolve, 0));
+      // Then: the callout points at the field in the top layer, not at the footer.
+      ok(callout()?.matches(':popover-open'), 'Missing profile name callout');
+      ok(callout().textContent.includes('profile name'), 'Callout does not name the field');
+      equal(el('profile-name').getAttribute('aria-invalid'), 'true');
+      equal(el('profile-name').getAttribute('aria-describedby'), 'field-callout-message');
+      equal(doc.activeElement, el('profile-name'));
+      ok(!el('toast').classList.contains('open'), 'Field error also opened the toast');
+      await new Promise((resolve) => win.setTimeout(resolve, 800)); // Let smooth scrolling settle.
+      const field = el('profile-name').getBoundingClientRect();
+      const box = callout().getBoundingClientRect();
+      ok(
+        Math.abs(box.top - field.bottom - 10) < 2,
+        `Callout is not attached to the field: ${box.top} vs ${field.bottom}`,
+      );
+      // When: the user types a name. Then: the callout and invalid state clear.
+      input('profile-name', 'Night');
+      equal(callout(), null);
+      equal(el('profile-name').hasAttribute('aria-invalid'), false);
+      equal(el('profile-name').hasAttribute('aria-describedby'), false);
+      // When: export succeeds. Then: a success toast opens without a close button.
+      el('export-all').click();
+      await new Promise((resolve) => win.setTimeout(resolve, 0));
+      ok(el('toast').classList.contains('open'), 'Missing success toast');
+      equal(el('toast').dataset.tone, 'success');
+      ok(el('status').textContent.startsWith('Exported 1 dark vectors'), 'Wrong success text');
+      equal(win.getComputedStyle(el('toast-close')).display, 'none');
+      equal(win.getComputedStyle(el('toast')).position, 'fixed');
+      // When: an error has no control to point at. Then: the toast stays until dismissed.
+      await el('json-file').onchange({
+        target: { files: [new win.File(['{"kind":"nope"}'], 'bad.json')], value: '' },
+      });
+      equal(el('toast').dataset.tone, 'error');
+      ok(el('status').classList.contains('error'), 'Missing error state');
+      equal(el('status').getAttribute('aria-live'), 'assertive');
+      ok(win.getComputedStyle(el('toast-close')).display !== 'none', 'Error cannot be dismissed');
+      el('toast-close').click();
+      ok(!el('toast').classList.contains('open'), 'Dismiss did not close the toast');
+      // When: an invalid hex value is committed. Then: the callout appears but keeps focus free.
+      el('save-profile').focus();
+      input('target-hex', '#12');
+      el('target-hex').dispatchEvent(new win.Event('change', { bubbles: true }));
+      ok(callout()?.textContent.includes('#RRGGBB'), 'Missing hex callout');
+      equal(doc.activeElement, el('save-profile'));
+      el('target-hex').dispatchEvent(
+        new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+      equal(callout(), null);
+      equal(el('target-hex').getAttribute('aria-invalid'), 'true');
+    } finally {
+      frame.remove();
+    }
+  });
   await test('Background animation respects pause control and motion preference', async () => {
     const frame = document.createElement('iframe');
     frame.src = 'index.html';
@@ -1463,6 +1555,306 @@
           ? localStorage.removeItem(key)
           : localStorage.setItem(key, previous[index]),
       );
+    }
+  });
+
+  const editorFrame = async () => {
+    const frame = document.createElement('iframe');
+    frame.src = 'index.html';
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    document.body.append(frame);
+    await loaded;
+    const doc = frame.contentDocument,
+      win = frame.contentWindow;
+    return { frame, doc, win, el: (id) => doc.getElementById(id) };
+  };
+  const nextFrame = (win) => new Promise((resolve) => win.requestAnimationFrame(() => resolve()));
+  const savedProfile = (name, target) => ({
+    version: 1,
+    kind: 'vector-dark-palette',
+    name,
+    mappings: { '#123456': target },
+    resources: {},
+    background: '#171923',
+  });
+  /** Runs a test against prepared profile storage and restores the previous values afterwards. */
+  async function withStoredProfiles(stored, last, run) {
+    const keys = ['vector-studio.profiles.v1', 'vector-studio.last-profile.v1'];
+    const previous = keys.map((key) => localStorage.getItem(key));
+    try {
+      localStorage.setItem(keys[0], stored);
+      if (last) localStorage.setItem(keys[1], last);
+      else localStorage.removeItem(keys[1]);
+      await run(keys);
+    } finally {
+      keys.forEach((key, index) =>
+        previous[index] === null
+          ? localStorage.removeItem(key)
+          : localStorage.setItem(key, previous[index]),
+      );
+    }
+  }
+
+  await test('One unreadable stored profile is skipped, kept in storage, and never overwritten', async () => {
+    // Given: a valid profile stored next to one from an unknown schema.
+    const broken = { kind: 'vector-dark-palette', version: 9, name: 'Future' };
+    await withStoredProfiles(
+      JSON.stringify([savedProfile('Brand', '#ABCDEF'), broken]),
+      'Brand',
+      async (keys) => {
+        const { frame, el } = await editorFrame();
+        try {
+          // Then: the readable profile loads and the skipped one is reported.
+          equal(
+            [...el('saved-profiles').options].map((option) => option.value),
+            ['', 'Brand'],
+          );
+          equal(el('saved-profiles').value, 'Brand');
+          equal(el('toast').dataset.tone, 'error');
+          ok(el('status').textContent.includes('1 saved profile could not be read'), 'No report');
+          // When: save another profile. Then: every stored entry survives.
+          el('profile-name').value = 'Second';
+          el('save-profile').click();
+          await new Promise((resolve) => setTimeout(resolve));
+          const stored = JSON.parse(localStorage.getItem(keys[0]));
+          equal(
+            stored.map((p) => p.name),
+            ['Future', 'Brand', 'Second'],
+          );
+          equal(stored[0], broken);
+        } finally {
+          frame.remove();
+        }
+      },
+    );
+  });
+
+  await test('Unparseable profile storage blocks saving instead of replacing it', async () => {
+    await withStoredProfiles('{not json', null, async (keys) => {
+      const { frame, el } = await editorFrame();
+      try {
+        ok(el('status').textContent.includes('Saving is paused'), 'Missing storage warning');
+        el('save-profile').click();
+        await new Promise((resolve) => setTimeout(resolve));
+        equal(localStorage.getItem(keys[0]), '{not json');
+        equal(el('toast').dataset.tone, 'error');
+        ok(el('status').textContent.includes('Export profile'), 'Save error lacks a way out');
+      } finally {
+        frame.remove();
+      }
+    });
+  });
+
+  await test('Saving over a different same-name profile asks first; profiles can be deleted and restored', async () => {
+    await withStoredProfiles(
+      JSON.stringify([savedProfile('Brand', '#ABCDEF'), savedProfile('Test', '#FEDCBA')]),
+      'Brand',
+      async (keys) => {
+        const { frame, el, win } = await editorFrame();
+        const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+        try {
+          // Given: Brand is loaded. When: save it under its own name. Then: no question asked.
+          el('save-profile').click();
+          await settle();
+          equal(el('overwrite-dialog').open, false);
+          // When: load Test, rename it to Brand and save. Then: replacing needs confirmation.
+          el('saved-profiles').value = 'Test';
+          el('saved-profiles').dispatchEvent(new win.Event('change'));
+          el('profile-name').value = 'Brand';
+          el('save-profile').click();
+          equal(el('overwrite-dialog').open, true);
+          ok(el('overwrite-title').textContent.includes('Brand'), 'Dialog does not name profile');
+          el('overwrite-dialog').querySelector('[value="cancel"]').click();
+          await settle();
+          const brand = () =>
+            JSON.parse(localStorage.getItem(keys[0])).find((p) => p.name === 'Brand');
+          equal(brand().mappings['#123456'], '#ABCDEF');
+          el('save-profile').click();
+          el('overwrite-dialog').querySelector('[value="replace"]').click();
+          await settle();
+          equal(brand().mappings['#123456'], '#FEDCBA');
+          // When: delete the selected profile. Then: it leaves storage and can be restored.
+          equal(el('delete-profile').disabled, false);
+          el('delete-profile').click();
+          equal(brand(), undefined);
+          equal(localStorage.getItem(keys[1]), null);
+          equal(el('delete-profile').disabled, true);
+          equal(el('toast-action').hidden, false);
+          el('toast-action').click();
+          equal(brand().mappings['#123456'], '#FEDCBA');
+          equal(el('saved-profiles').value, 'Brand');
+        } finally {
+          frame.remove();
+        }
+      },
+    );
+  });
+
+  await test('A picker drag or a typed hex value is one undo step; partial hex is not applied', async () => {
+    const { frame, el, win } = await editorFrame();
+    try {
+      el('paste-open').click();
+      el('xml-input').value = wrap(path('#123456'));
+      el('paste-import').click();
+      const fill = () => el('dark-preview').querySelector('path[data-node]').getAttribute('fill');
+      const original = fill();
+      // When: a drag fires many input events. Then: one frame redraws and one undo restores.
+      for (const value of ['#101010', '#202020', '#303030', '#404040']) {
+        el('target-picker').value = value;
+        el('target-picker').dispatchEvent(new win.Event('input'));
+      }
+      el('target-picker').dispatchEvent(new win.Event('change'));
+      await nextFrame(win);
+      equal(fill(), '#404040');
+      el('undo').click();
+      equal(fill(), original);
+      equal(el('undo').disabled, true);
+      // When: typing a full value key by key. Then: short prefixes never reach the artwork.
+      for (const value of [
+        '#1',
+        '#12',
+        '#123',
+        '#1234',
+        '#12345',
+        '#123456',
+        '#1234567',
+        '#12345678',
+      ]) {
+        el('target-hex').value = value;
+        el('target-hex').dispatchEvent(new win.Event('input'));
+        if (value.length < 7) equal(fill(), original);
+      }
+      el('target-hex').dispatchEvent(new win.Event('change'));
+      equal(fill(), '#345678');
+      el('undo').click();
+      equal(fill(), original);
+      equal(el('undo').disabled, true);
+      // When: a short form is committed. Then: it applies on change.
+      el('target-hex').value = '#abc';
+      el('target-hex').dispatchEvent(new win.Event('input'));
+      equal(fill(), original);
+      el('target-hex').dispatchEvent(new win.Event('change'));
+      equal(fill(), '#AABBCC');
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Separate edits re-render only the affected thumbnail; preview clicks still select', async () => {
+    const { frame, el, win } = await editorFrame();
+    try {
+      await el('vector-files').onchange({
+        target: {
+          files: ['one', 'two'].map(
+            (name) => new win.File([wrap(path('#123456') + path('#654321'))], name + '.xml'),
+          ),
+          value: '',
+        },
+      });
+      const thumbs = () => [...el('asset-list').querySelectorAll('.asset-preview svg')];
+      const [first, second] = thumbs();
+      el('separate-image').click();
+      el('target-hex').value = '#ABCDEF';
+      el('target-hex').dispatchEvent(new win.Event('input'));
+      equal(thumbs()[1], second, 'Untouched thumbnail was rebuilt');
+      ok(thumbs()[0] !== first, 'Edited thumbnail kept stale colors');
+      el('dark-preview')
+        .querySelectorAll('[data-node]')[1]
+        .dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+      ok(
+        el('palette-list').querySelector('.active').getAttribute('aria-label').includes('#654321'),
+        'Preview click did not select the clicked color',
+      );
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Removing an illustration offers Undo that restores it with its overrides and history', async () => {
+    const { frame, el, win, doc } = await editorFrame();
+    const unloadBlocked = () => {
+      const event = new win.Event('beforeunload', { cancelable: true });
+      win.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    try {
+      // Given: removing the bundled example leaves nothing worth saving.
+      el('asset-list').querySelector('.asset-remove').click();
+      equal(el('asset-count').textContent, '0');
+      equal(unloadBlocked(), false);
+      el('toast-action').click();
+      equal(el('asset-count').textContent, '1');
+      await el('vector-files').onchange({
+        target: {
+          files: ['one', 'two'].map((name) => new win.File([wrap(path('#123456'))], name + '.xml')),
+          value: '',
+        },
+      });
+      el('asset-list').querySelectorAll('.asset')[1].click();
+      el('separate-image').click();
+      el('keep-original').click();
+      // When: remove the edited illustration.
+      el('asset-list').querySelectorAll('.asset-remove')[1].click();
+      equal(el('asset-count').textContent, '1');
+      equal(el('undo').disabled, true);
+      ok(el('status').textContent.startsWith('Removed two.xml'), 'Missing removal message');
+      equal(el('toast-action').textContent, 'Undo');
+      // Then: Undo brings back the illustration, its override, selection and history.
+      el('toast-action').click();
+      equal(el('asset-count').textContent, '2');
+      equal(el('asset-name').textContent, 'two.xml');
+      equal(el('separate-image').checked, true);
+      equal(el('mapping-origin').textContent, 'Original kept');
+      equal(el('undo').disabled, false);
+      ok(doc.querySelector('.asset.active'), 'Restored illustration not active');
+      equal(unloadBlocked(), true);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Text drops keep their default; file drops behind an open dialog are not imported', async () => {
+    const { frame, el, win, doc } = await editorFrame();
+    const drop = (transfer, target = doc) => {
+      const event = new win.DragEvent('drop', {
+        dataTransfer: transfer,
+        bubbles: true,
+        cancelable: true,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const settle = () => new Promise((resolve) => win.setTimeout(resolve, 0));
+    try {
+      el('load-demo').click();
+      const status = el('status').textContent;
+      // When: selected text is dropped into the Paste XML field.
+      el('paste-open').click();
+      const text = new win.DataTransfer();
+      text.setData('text/plain', '<vector/>');
+      const textDrop = drop(text, el('xml-input'));
+      await settle();
+      // Then: the browser may insert it, and the status line is untouched.
+      equal(textDrop.defaultPrevented, false);
+      equal(el('status').textContent, status);
+      // When: a file is dropped while the dialog is open.
+      const files = new win.DataTransfer();
+      files.items.add(new win.File([wrap(path('#123456'))], 'behind.xml'));
+      doc.dispatchEvent(new win.DragEvent('dragenter', { dataTransfer: files }));
+      equal(el('drop-overlay').hidden, true);
+      const fileDrop = drop(files);
+      await settle();
+      // Then: the browser does not open the file, and nothing is imported behind the dialog.
+      equal(fileDrop.defaultPrevented, true);
+      equal(el('asset-count').textContent, '1');
+      equal(el('status').textContent, status);
+      el('paste-close').click();
+      // When: the dialog is closed. Then: the same drop imports the file.
+      drop(files);
+      await new Promise((resolve) => win.setTimeout(resolve, 20));
+      equal(el('asset-name').textContent, 'behind.xml');
+    } finally {
+      frame.remove();
     }
   });
 
