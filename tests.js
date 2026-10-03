@@ -1579,6 +1579,13 @@
     return { frame, doc, win, el: (id) => doc.getElementById(id) };
   };
   const nextFrame = (win) => new Promise((resolve) => win.requestAnimationFrame(() => resolve()));
+  async function waitForAsset(el, win, name) {
+    const deadline = Date.now() + 5000;
+    while (el('asset-name').textContent !== name) {
+      if (Date.now() >= deadline) throw new Error(`Import did not finish: ${name}`);
+      await nextFrame(win);
+    }
+  }
   const savedProfile = (name, target) => ({
     version: 1,
     kind: 'vector-dark-palette',
@@ -1861,7 +1868,7 @@
       el('paste-close').click();
       // When: the dialog is closed. Then: the same drop imports the file.
       drop(files);
-      await new Promise((resolve) => win.setTimeout(resolve, 20));
+      await waitForAsset(el, win, 'behind.xml');
       equal(el('asset-name').textContent, 'behind.xml');
     } finally {
       frame.remove();
@@ -1912,7 +1919,7 @@
       drag('dragenter', inside);
       drag('drop', inside);
       equal(el('drop-overlay').hidden, true);
-      await wait(20);
+      await waitForAsset(el, win, 'late.xml');
       equal(el('asset-name').textContent, 'late.xml');
     } finally {
       frame.remove();
