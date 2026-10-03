@@ -1,7 +1,6 @@
 import { createServer } from 'node:http';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
+import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -34,7 +33,6 @@ const server = createServer(async (req, res) => {
   }
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const profile = await mkdtemp(path.join(tmpdir(), 'vector-dusk-test-'));
 const chrome =
   process.env.CHROME_BIN ||
   (process.platform === 'darwin'
@@ -45,37 +43,32 @@ const chrome =
           'Google/Chrome/Application/chrome.exe',
         )
       : 'google-chrome');
-let output = '';
-let errors = '';
+let browser;
+let page;
 try {
-  const child = spawn(chrome, [
-    '--headless=new',
-    '--disable-gpu',
-    '--no-first-run',
-    '--no-default-browser-check',
-    `--user-data-dir=${profile}`,
-    '--dump-dom',
-    '--virtual-time-budget=15000',
-    `http://127.0.0.1:${server.address().port}${prefix}tests.html`,
-  ]);
-  child.stdout.on('data', (chunk) => (output += chunk));
-  child.stderr.on('data', (chunk) => (errors += chunk));
-  const timeout = setTimeout(() => child.kill('SIGKILL'), 45000);
-  await new Promise((resolve, reject) => {
-    child.on('close', resolve);
-    child.on('error', reject);
-  }).finally(() => clearTimeout(timeout));
-  const report = output.match(/<pre id="results">([\s\S]*?)<\/pre>/)?.[1];
-  console.log(
-    (report || errors || output)
-      .replaceAll('&gt;', '>')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&amp;', '&'),
+  browser = await chromium.launch({ executablePath: chrome, headless: true });
+  page = await browser.newPage();
+  await page.goto(`http://127.0.0.1:${server.address().port}${prefix}tests.html`);
+  // Wait for the suite itself; virtual-time dumps can outrun animations and async imports.
+  await page.waitForFunction(
+    () => ['passed', 'failed'].includes(document.body.dataset.testStatus),
+    null,
+    { timeout: 60000 },
   );
-  if (!/data-test-status="(?:passed|failed)"/.test(output))
-    console.error('Browser suite did not finish. No success result was reported.');
-  process.exitCode = output.includes('data-test-status="passed"') ? 0 : 1;
+  console.log(await page.locator('#results').textContent());
+  process.exitCode =
+    (await page.evaluate(() => document.body.dataset.testStatus)) === 'passed' ? 0 : 1;
+} catch (error) {
+  if (page)
+    console.error(
+      await page
+        .locator('#results')
+        .textContent()
+        .catch(() => ''),
+    );
+  console.error(error);
+  process.exitCode = 1;
 } finally {
+  await browser?.close();
   server.close();
-  await rm(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }

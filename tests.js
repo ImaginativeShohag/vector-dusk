@@ -1177,6 +1177,7 @@
         equal(el(id).disabled, true);
       el('dark-background').value = '#112233';
       el('dark-background').dispatchEvent(new win.Event('input'));
+      await new Promise((resolve) => win.requestAnimationFrame(resolve));
       el('undo').click();
       equal(el('dark-background').value, '#191b24');
       el('load-demo').click();
@@ -1878,8 +1879,15 @@
     try {
       const files = new win.DataTransfer();
       files.items.add(new win.File([wrap(path('#123456'))], 'late.xml'));
+      // Synthetic drags have no native drag session, so Chrome ignores dropEffect writes.
+      // Capture the handler's requested effect while keeping real file data and events.
+      Object.defineProperty(files, 'dropEffect', { value: 'none', writable: true });
       // When: the pointer crosses nested elements, so dragenter outnumbers dragleave.
-      const inside = { dataTransfer: files, clientX: 200, clientY: 200 };
+      const inside = {
+        dataTransfer: files,
+        clientX: win.innerWidth / 2,
+        clientY: win.innerHeight / 2,
+      };
       drag('dragenter', inside);
       drag('dragenter', inside);
       drag('dragleave', inside);

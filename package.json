@@ -21,6 +21,7 @@
   "devDependencies": {
     "fast-xml-parser": "5.11.2",
     "node": "22.22.0",
+    "playwright": "1.63.0",
     "prettier": "3.8.3",
     "promptfoo": "0.123.1"
   }
