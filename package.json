@@ -1,6 +1,6 @@
 {
   "name": "vector-dusk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "license": "MIT",
   "description": "Local-first dark palette editor for SVG and Android VectorDrawable artwork",
