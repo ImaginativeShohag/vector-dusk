@@ -2130,7 +2130,9 @@
       equal(pending.defaultPrevented, true);
       await nextFrame(win);
       await until(
-        () => el('recovery-state').textContent.startsWith('Local recovery saved'),
+        async () =>
+          (await recoveryRecord())?.workspace.profile.mappings['#123456'] === '#ABCDEF' &&
+          el('recovery-state').textContent.startsWith('Local recovery saved'),
         'Edited backup did not settle',
       );
       const settled = new win.Event('beforeunload', { cancelable: true });
