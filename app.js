@@ -302,6 +302,9 @@
     state.redo = [];
     state.dirty = true;
     state.workspaceDirty = true;
+    recoveryEnabled = true;
+    recoveryUnsaved = true;
+    recoveryGeneration++;
   }
   const endGesture = () => (openGesture = null);
   // Picker drags fire faster than a full render, so they redraw at most once per frame.
@@ -388,6 +391,7 @@
   }
   function renderPreviews() {
     const asset = activeAsset();
+    window.previewView?.setAsset(asset);
     if (!asset) {
       for (const id of ['light-preview', 'dark-preview'])
         getElement(id).replaceChildren(
@@ -475,6 +479,7 @@
       redo: state.redo,
       workspaceDirty: state.workspaceDirty,
     };
+    recoveryEnabled = true;
     const [removed] = state.assets.splice(index, 1);
     if (index < state.active) state.active--;
     else if (index === state.active) {
@@ -792,8 +797,8 @@
       ? 'Unsaved palette'
       : 'Palette saved locally';
     getElement('workspace-state').textContent = state.workspaceDirty
-      ? 'Unsaved workspace · download to keep artwork and overrides.'
-      : 'Save workspace to keep artwork and overrides.';
+      ? 'Workspace not downloaded · download a portable backup.'
+      : 'Download a workspace for a portable backup.';
     getElement('profile-state').classList.toggle('saved', !state.dirty);
     const savedName = getElement('saved-profiles').value;
     getElement('delete-profile').disabled = !savedName;
@@ -808,6 +813,7 @@
     renderEditor(keepInput);
     renderPreviews();
     renderAssets();
+    scheduleRecovery();
   }
   function addAssets(assets) {
     const existing = state.assets.length === 1 && state.assets[0].demo ? 0 : state.assets.length;
@@ -827,6 +833,7 @@
     state.use = '';
     state.dirty = true;
     state.workspaceDirty = true;
+    recoveryEnabled = true;
     resetHistory();
     render();
     const cards = [...getElement('asset-list').querySelectorAll('.asset-card')].slice(state.active);
@@ -857,6 +864,7 @@
     });
   }
   function applyProfile(profile) {
+    if (recoveryReady) recoveryEnabled = true;
     state.loadedProfile = null;
     state.mappings = { ...profile.mappings };
     state.resources = { ...profile.resources };
@@ -945,11 +953,186 @@
       errors.length ? 'error' : 'success',
     );
   }
-  function importWorkspace(value) {
+  function workspaceValue(profile) {
+    return {
+      kind: 'vector-dark-workspace',
+      version: 1,
+      profile,
+      assets: state.assets.map((asset) => ({
+        name: asset.name,
+        xml: asset.model.text,
+        overrides: { ...asset.overrides },
+        uses: { ...asset.uses },
+        separate: !!asset.separate,
+      })),
+    };
+  }
+  // ponytail: one recovery slot per origin; use named slots if concurrent workspaces are needed.
+  let recoveryDatabase;
+  let recoveryReady = false;
+  let recoveryEnabled = false;
+  let recoveryLocked = false;
+  let recoveryTimer;
+  let recoveryPending;
+  let recoverySaving = false;
+  let recoverySnapshot = '';
+  let recoveryUnsaved = false;
+  let recoveryGeneration = 0;
+  function recoveryStatus(message) {
+    const node = getElement('recovery-state');
+    if (node) node.textContent = message;
+  }
+  function recoveryTransaction(mode, run) {
+    return new Promise((resolve, reject) => {
+      const transaction = recoveryDatabase.transaction('workspaces', mode);
+      let value;
+      const request = run(transaction.objectStore('workspaces'));
+      request.onsuccess = () => {
+        value = request.result;
+      };
+      transaction.oncomplete = () => resolve(value);
+      transaction.onerror = transaction.onabort = () =>
+        reject(transaction.error || new Error('Browser storage transaction failed.'));
+    });
+  }
+  async function readRecovery() {
+    recoveryStatus('Checking local recovery…');
+    try {
+      recoveryDatabase = await new Promise((resolve, reject) => {
+        const request = indexedDB.open('vector-dusk.recovery.v1', 1);
+        let expired = false;
+        const fail = (error) => {
+          expired = true;
+          clearTimeout(timeout);
+          reject(error);
+        };
+        const timeout = setTimeout(() => fail(new Error('Browser storage timed out.')), 3000);
+        request.onupgradeneeded = () => {
+          if (expired) request.transaction.abort();
+          else request.result.createObjectStore('workspaces');
+        };
+        request.onsuccess = () => {
+          clearTimeout(timeout);
+          if (expired) request.result.close();
+          else resolve(request.result);
+        };
+        request.onerror = () => fail(request.error);
+        request.onblocked = () => fail(new Error('Browser storage is blocked.'));
+      });
+      recoveryDatabase.onversionchange = () => {
+        recoveryDatabase.close();
+        recoveryLocked = true;
+        recoveryStatus('Local recovery unavailable · download a workspace to keep your work.');
+      };
+      const value = await recoveryTransaction('readonly', (store) => store.get('current'));
+      if (value !== undefined) {
+        if (
+          !value ||
+          typeof value.name !== 'string' ||
+          value.name.length > 100 ||
+          !Number.isInteger(value.active) ||
+          value.active < 0 ||
+          new Blob([JSON.stringify(value)]).size > 50_000_000
+        )
+          throw new Error('Invalid local recovery data.');
+        validateWorkspace(value.workspace, true);
+        recoveryStatus('Local recovery found.');
+        return value;
+      }
+      recoveryStatus('Local recovery starts when you import artwork.');
+    } catch {
+      // Preserve unreadable backups and avoid replacing them with the demo or a partial session.
+      recoveryLocked = true;
+      recoveryStatus('Local recovery unavailable · download a workspace to keep your work.');
+    }
+  }
+  function restoreRecovery(value) {
+    importWorkspace(value.workspace, true);
+    getElement('profile-name').value = value.name;
+    state.active = Math.min(value.active, Math.max(0, state.assets.length - 1));
+    state.selected = typeof value.selected === 'string' ? value.selected : '';
+    state.use = activeAsset()?.model.uses.some((use) => use.id === value.use) ? value.use : '';
+    state.pickedUse = value.pickedUse === state.use ? state.use : '';
+    state.useOnly = value.useOnly === true;
+    render();
+    recoverySnapshot = JSON.stringify(recoveryValue());
+    recoveryStatus('Workspace recovered locally · download for a portable backup.');
+  }
+  function scheduleRecovery() {
+    if (!recoveryReady || !recoveryEnabled) return;
+    recoveryUnsaved = true;
+    recoveryGeneration++;
+    if (recoveryLocked) return;
+    clearTimeout(recoveryTimer);
+    recoveryTimer = setTimeout(saveRecovery, 0);
+  }
+  function recoveryValue() {
+    const name = getElement('profile-name').value;
+    const profile = vectorTools.validateProfile({
+      kind: 'vector-dark-palette',
+      version: 1,
+      name: name.trim() || 'My illustrations',
+      mappings: state.mappings,
+      resources: state.resources,
+      background: state.background,
+    });
+    return {
+      workspace: workspaceValue(profile),
+      name,
+      active: state.active,
+      selected: state.selected,
+      use: state.use,
+      pickedUse: state.pickedUse,
+      useOnly: state.useOnly,
+    };
+  }
+  async function saveRecovery() {
+    try {
+      const value = recoveryValue();
+      const snapshot = JSON.stringify(value);
+      if (new Blob([snapshot]).size > 50_000_000)
+        throw new Error('Workspace exceeds local recovery limit.');
+      if (snapshot === recoverySnapshot && !recoverySaving) {
+        recoveryUnsaved = false;
+        recoveryStatus('Local recovery saved · download for a portable backup.');
+        return;
+      }
+      recoveryPending = { value, snapshot, generation: recoveryGeneration };
+    } catch {
+      recoveryStatus('Local recovery failed · previous backup kept. Download a workspace.');
+      return;
+    }
+    recoveryStatus('Saving local recovery…');
+    if (recoverySaving) return;
+    recoverySaving = true;
+    try {
+      let committedGeneration = 0;
+      while (recoveryPending) {
+        const pending = recoveryPending;
+        recoveryPending = null;
+        await recoveryTransaction('readwrite', (store) => store.put(pending.value, 'current'));
+        recoverySnapshot = pending.snapshot;
+        committedGeneration = pending.generation;
+      }
+      if (committedGeneration === recoveryGeneration) {
+        recoveryUnsaved = false;
+        recoveryStatus('Local recovery saved · download for a portable backup.');
+      }
+    } catch {
+      recoveryPending = null;
+      recoveryStatus('Local recovery failed · previous backup kept. Download a workspace.');
+    } finally {
+      recoverySaving = false;
+    }
+  }
+
+  function validateWorkspace(value, allowEmpty = false) {
     if (
+      !value ||
+      value.kind !== 'vector-dark-workspace' ||
       value.version !== 1 ||
       !Array.isArray(value.assets) ||
-      !value.assets.length ||
+      (!allowEmpty && !value.assets.length) ||
       value.assets.length > 100
     )
       throw new Error('Invalid workspace: expected 1–100 illustrations.');
@@ -980,6 +1163,11 @@
     });
     if (new Set(assets.map((a) => a.name)).size !== assets.length)
       throw new Error('Workspace has duplicate filenames.');
+    return { assets, profile };
+  }
+  function importWorkspace(value, allowEmpty = false) {
+    const { assets, profile } = validateWorkspace(value, allowEmpty);
+    recoveryEnabled = true;
     state.assets = assets;
     state.active = 0;
     state.selected = '';
@@ -1096,6 +1284,7 @@
     const setScope = (scope) => {
       const asset = activeAsset();
       if (!asset) return;
+      recoveryEnabled = true;
       state.useOnly = scope === 'shape';
       const wasSeparate = !!asset.separate;
       if (scope !== 'shape') asset.separate = scope === 'image';
@@ -1159,12 +1348,14 @@
     };
     getElement('dark-background').onchange = endGesture;
     getElement('profile-name').oninput = () => {
+      recoveryEnabled = true;
       state.dirty = true;
       state.workspaceDirty = true;
       getElement('workspace-state').textContent =
-        'Unsaved workspace · download to keep artwork and overrides.';
+        'Workspace not downloaded · download a portable backup.';
       getElement('profile-state').textContent = 'Unsaved palette';
       getElement('profile-state').classList.remove('saved');
+      scheduleRecovery();
     };
   }
 
@@ -1292,18 +1483,7 @@
       status('Exported palette.json. Keep it to reuse your colors in any browser.');
     });
     getElement('save-workspace').onclick = reportErrors(() => {
-      const workspace = {
-        kind: 'vector-dark-workspace',
-        version: 1,
-        profile: currentProfile(),
-        assets: state.assets.map((a) => ({
-          name: a.name,
-          xml: a.model.text,
-          overrides: a.overrides,
-          uses: a.uses,
-          separate: !!a.separate,
-        })),
-      };
+      const workspace = workspaceValue(currentProfile());
       const json = JSON.stringify(workspace, null, 2);
       if (new Blob([json]).size > 50_000_000)
         throw new Error(
@@ -1445,7 +1625,7 @@
     );
 
     window.addEventListener('beforeunload', (event) => {
-      if (state.workspaceDirty) {
+      if (recoveryUnsaved || (state.workspaceDirty && (!recoveryEnabled || recoveryLocked))) {
         event.preventDefault();
         event.returnValue = '';
       }
@@ -1540,6 +1720,7 @@ Apply the finalized result to the intended project location, preserve the format
     getElement('profile-name').value = 'My illustrations';
     getElement('saved-profiles').value = '';
     state.loadedProfile = null;
+    state.assets = [];
     addAssets([asset]);
     history.replaceState(null, '', location.pathname + location.search);
     status(
@@ -1548,6 +1729,9 @@ Apply the finalized result to the intended project location, preserve the format
   }
 
   async function initialize() {
+    const editor = getElement('editor');
+    editor.inert = true;
+    editor.setAttribute('aria-busy', 'true');
     bindImportEvents();
     bindColorEditorEvents();
     bindProfileEvents();
@@ -1589,18 +1773,20 @@ Apply the finalized result to the intended project location, preserve the format
     state.workspaceDirty = false;
     render();
     if (storageProblem) status(storageProblem, 'error');
+    const recovery = await readRecovery();
     if (new URLSearchParams(location.hash.slice(1)).has('v')) {
-      const editor = getElement('editor');
-      editor.inert = true;
-      editor.setAttribute('aria-busy', 'true');
       status('Loading artwork from agent link…', 'info');
       try {
-        await reportErrors(importAgentLink)();
-      } finally {
-        editor.inert = false;
-        editor.removeAttribute('aria-busy');
+        await importAgentLink();
+      } catch (error) {
+        if (recovery) restoreRecovery(recovery);
+        status(error.message, 'error');
       }
-    }
+    } else if (recovery) restoreRecovery(recovery);
+    recoveryReady = true;
+    scheduleRecovery();
+    editor.inert = false;
+    editor.removeAttribute('aria-busy');
   }
 
   initialize();

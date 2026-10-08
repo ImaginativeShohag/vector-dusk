@@ -38,16 +38,20 @@
         no longer need.
       </p>
       <p>
-        Artwork and illustration-specific edits stay in the open page’s memory. They are not
-        automatically saved. Save workspace downloads a JSON backup containing the original artwork
-        and your edits. Exported SVG, XML, ZIP and JSON files are saved through your browser’s
-        download feature.
+        The latest workspace is automatically saved in this browser using IndexedDB, including
+        original artwork, shared colors, resource colors and illustration-specific edits. It is
+        restored on your next visit to this website. Editor tabs share one recovery copy, with the
+        last save replacing it. A successful replacement workspace or agent import replaces the
+        recovery copy. Browser storage can be unavailable, full or cleared; check the recovery
+        status and use Save workspace for a portable JSON backup. Exported SVG, XML, ZIP and JSON
+        files are saved through your browser’s download feature.
       </p>
       <h2>How to remove local data</h2>
       <p>
-        Use your browser’s site settings to clear storage for this site. That removes saved
-        profiles; export any profiles you want to keep first. Close the editor to release in-memory
-        artwork. Remove downloaded files using your computer’s normal file controls.
+        Use your browser’s site settings to clear storage for this site. That removes saved profiles
+        and the automatic workspace recovery copy; download a workspace and export any profiles you
+        want to keep first. Closing the editor releases in-memory artwork but does not remove the
+        recovery copy. Remove downloaded files using your computer’s normal file controls.
       </p>
       <h2>Hosting and network requests</h2>
       <p>

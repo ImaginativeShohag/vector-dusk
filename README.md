@@ -12,6 +12,8 @@
 - **Build consistent dark palettes.** Adjust replacements directly or explore tints and shades.
 - **Work with Android resources.** Import VectorDrawable XML and light-mode `colors.xml` references; export dark resources under their original filenames.
 - **Keep your work portable.** Save a profile for shared colors, or download a workspace containing artwork and overrides.
+- **Recover your session.** Artwork and edits are saved automatically in this browser and restored on your next visit. Check the recovery status before closing.
+- **Inspect the details.** Zoom and pan both previews together; Fit restores the full illustration. Preview navigation does not change exported artwork.
 - **Export without a service.** Download an individual SVG/XML file or the full collection as a ZIP.
 
 ## Quick start
@@ -32,7 +34,7 @@ Open [http://127.0.0.1:8765](http://127.0.0.1:8765). Keep the terminal running w
 3. Save a **profile** to retain shared palette settings in this browser. Saving over a different profile with the same name asks first, and **Delete** removes the selected saved profile (with Undo). Save a **workspace** to download the artwork and all overrides; reopen either exported JSON file with **Import JSON**.
 4. Export one file or the collection ZIP. Place exported Android XML files in `res/drawable-night/` using their original filenames.
 
-Save a workspace before closing or refreshing the page. Profiles do not contain artwork.
+Save a workspace for a portable backup. Automatic recovery keeps only the latest workspace on this website in this browser. Editor tabs share that recovery copy, so the last save wins. Clearing site data, private browsing, storage limits or closing before a save finishes can prevent recovery. Profiles do not contain artwork.
 
 ## Use with an agent
 

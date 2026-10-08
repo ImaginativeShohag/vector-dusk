@@ -19,6 +19,7 @@ const files = [
   'demo.js',
   'zip.js',
   'app.js',
+  'preview.js',
   'background.js',
   'fixtures/palette.svg',
 ];

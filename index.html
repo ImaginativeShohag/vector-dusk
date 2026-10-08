@@ -21,6 +21,7 @@
     <script defer src="svg.js"></script>
     <script defer src="demo.js"></script>
     <script defer src="zip.js"></script>
+    <script defer src="preview.js"></script>
     <script defer src="app.js"></script>
     <script defer src="background.js"></script>
   </head>
@@ -39,6 +40,14 @@
         <span class="tag">XML + SVG</span>
       </div>
       <span class="local"><span class="dot"></span> Local files. No uploads.</span>
+      <a
+        class="feedback-link quiet"
+        href="https://github.com/ImaginativeShohag/vector-dusk/issues/new"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Report an issue or request a feature on GitHub (opens in a new tab)"
+        >Report / request</a
+      >
       <a href="guide.html">Guide</a>
     </header>
     <main id="editor" tabindex="-1">
@@ -110,14 +119,40 @@
               <h2 id="asset-name">Your illustration</h2>
             </div>
             <div class="history">
-              <button id="undo" title="Undo color edit" aria-label="Undo" disabled>↶</button
-              ><button id="redo" title="Redo color edit" aria-label="Redo" disabled>↷</button>
+              <button id="undo" title="Undo color edit" aria-label="Undo" disabled>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="M9 3 3 9l6 6M3 9h11a6 6 0 0 1 0 12H8" />
+                </svg></button
+              ><button id="redo" title="Redo color edit" aria-label="Redo" disabled>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="20"
+                  height="20"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <path d="m15 3 6 6-6 6M21 9H10a6 6 0 0 0 0 12h6" />
+                </svg>
+              </button>
             </div>
           </div>
           <div class="preview-grid">
             <article class="preview-card">
               <div class="preview-label"><span>☀ &nbsp;Original</span><span>LIGHT</span></div>
-              <div id="light-preview" class="canvas light"></div>
+              <div
+                id="light-preview"
+                class="canvas light"
+                tabindex="0"
+                role="group"
+                aria-label="Original preview"
+                aria-describedby="preview-help"
+              ></div>
               <div class="preview-foot">Original colors stay untouched</div>
             </article>
             <article class="preview-card dark-card">
@@ -125,7 +160,14 @@
                 <span>☾ &nbsp;Your adaptation</span
                 ><span class="live"><span class="dot"></span> LIVE</span>
               </div>
-              <div id="dark-preview" class="canvas dark"></div>
+              <div
+                id="dark-preview"
+                class="canvas dark"
+                tabindex="0"
+                role="group"
+                aria-label="Dark preview"
+                aria-describedby="preview-help"
+              ></div>
               <div class="preview-foot">
                 <label for="dark-background">Preview background</label
                 ><input
@@ -136,6 +178,23 @@
                 /><code id="background-label">#191B24</code>
               </div>
             </article>
+          </div>
+          <div class="preview-navigation" role="group" aria-label="Preview zoom and pan">
+            <button
+              id="preview-zoom-out"
+              class="quiet"
+              type="button"
+              aria-label="Zoom out"
+              disabled
+            >
+              −
+            </button>
+            <output id="preview-zoom" aria-live="polite">100%</output>
+            <button id="preview-zoom-in" class="quiet" type="button" aria-label="Zoom in" disabled>
+              +
+            </button>
+            <button id="preview-fit" class="quiet" type="button" disabled>Fit</button>
+            <span id="preview-help">Drag to pan · Arrow keys move · + / − zoom · 0 fits</span>
           </div>
           <div class="preview-controls">
             <label class="switch"
@@ -156,7 +215,10 @@
             Drop SVG or VectorDrawable XML files anywhere to add them to this collection.
           </div>
           <p id="workspace-state" class="workspace-state">
-            Save workspace to keep artwork and overrides.
+            Download a workspace for a portable backup.
+          </p>
+          <p id="recovery-state" class="workspace-state" role="status" aria-live="polite">
+            Checking workspace recovery…
           </p>
           <div class="export-bar">
             <button id="save-workspace" class="quiet">Save workspace</button>
@@ -260,6 +322,127 @@
             ><a href="https://github.com/ImaginativeShohag/vector-dusk">GitHub</a></span
           >
         </div>
+        <span class="footer-credit"
+          >Made with ♥ and a little midnight magic by
+          <a href="https://github.com/ImaginativeShohag" target="_blank" rel="noopener noreferrer"
+            >ImaginativeShohag</a
+          >
+          <span class="credit-sparkles" aria-hidden="true"
+            ><svg
+              class="reference-field"
+              viewBox="0 0 600 64"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path
+                class="reference-star"
+                d="M544 -3Q545.26 2.74 551 4Q545.26 5.26 544 11Q542.74 5.26 537 4Q542.74 2.74 544 -3Z"
+              />
+              <path
+                class="reference-star"
+                d="M41 7Q41.72 10.28 45 11Q41.72 11.72 41 15Q40.28 11.72 37 11Q40.28 10.28 41 7Z"
+              />
+              <path
+                class="reference-star"
+                d="M61 4Q61.9 8.1 66 9Q61.9 9.9 61 14Q60.1 9.9 56 9Q60.1 8.1 61 4Z"
+              />
+              <path
+                class="reference-star"
+                d="M537 13Q537.9 17.1 542 18Q537.9 18.9 537 23Q536.1 18.9 532 18Q536.1 17.1 537 13Z"
+              />
+              <path
+                class="reference-star"
+                d="M378 5Q378.54 7.46 381 8Q378.54 8.54 378 11Q377.46 8.54 375 8Q377.46 7.46 378 5Z"
+              />
+              <path
+                class="reference-star"
+                d="M582 43Q582.72 46.28 586 47Q582.72 47.72 582 51Q581.28 47.72 578 47Q581.28 46.28 582 43Z"
+              />
+              <path
+                class="reference-star"
+                d="M384 48Q384.9 52.1 389 53Q384.9 53.9 384 58Q383.1 53.9 379 53Q383.1 52.1 384 48Z"
+              />
+              <path
+                class="reference-star"
+                d="M237 1Q237.9 5.1 242 6Q237.9 6.9 237 11Q236.1 6.9 232 6Q236.1 5.1 237 1Z"
+              />
+              <path
+                class="reference-star"
+                d="M294 51Q294.36 52.64 296 53Q294.36 53.36 294 55Q293.64 53.36 292 53Q293.64 52.64 294 51Z"
+              />
+              <path
+                class="reference-star"
+                d="M61 5Q61.72 8.28 65 9Q61.72 9.72 61 13Q60.28 9.72 57 9Q60.28 8.28 61 5Z"
+              />
+              <path
+                class="reference-star"
+                d="M282 11Q282.72 14.28 286 15Q282.72 15.72 282 19Q281.28 15.72 278 15Q281.28 14.28 282 11Z"
+              />
+              <path
+                class="reference-star"
+                d="M55 6Q55.72 9.28 59 10Q55.72 10.72 55 14Q54.28 10.72 51 10Q54.28 9.28 55 6Z"
+              />
+              <path
+                class="reference-star"
+                d="M63 13Q63.36 14.64 65 15Q63.36 15.36 63 17Q62.64 15.36 61 15Q62.64 14.64 63 13Z"
+              />
+              <path
+                class="reference-star"
+                d="M458 8Q458.36 9.64 460 10Q458.36 10.36 458 12Q457.64 10.36 456 10Q457.64 9.64 458 8Z"
+              />
+              <path
+                class="reference-star"
+                d="M405 42Q405.72 45.28 409 46Q405.72 46.72 405 50Q404.28 46.72 401 46Q404.28 45.28 405 42Z"
+              />
+              <path
+                class="reference-star"
+                d="M316 44Q316.36 45.64 318 46Q316.36 46.36 316 48Q315.64 46.36 314 46Q315.64 45.64 316 44Z"
+              />
+              <path
+                class="reference-star"
+                d="M361 52Q361.54 54.46 364 55Q361.54 55.54 361 58Q360.46 55.54 358 55Q360.46 54.46 361 52Z"
+              />
+              <path
+                class="reference-star"
+                d="M213 1Q213.54 3.46 216 4Q213.54 4.54 213 7Q212.46 4.54 210 4Q212.46 3.46 213 1Z"
+              />
+              <circle class="reference-dust" cx="94" cy="17" r="0.75" />
+              <circle class="reference-dust" cx="242" cy="22" r="0.5" />
+              <circle class="reference-dust" cx="459" cy="31" r="0.75" />
+              <circle class="reference-dust" cx="219" cy="13" r="0.75" />
+              <circle class="reference-dust" cx="312" cy="17" r="0.5" />
+              <circle class="reference-dust" cx="15" cy="13" r="0.5" />
+              <circle class="reference-dust" cx="533" cy="43" r="0.75" />
+              <circle class="reference-dust" cx="296" cy="61" r="0.75" />
+              <circle class="reference-dust" cx="290" cy="18" r="0.35" />
+              <circle class="reference-dust" cx="139" cy="29" r="0.35" />
+              <circle class="reference-dust" cx="125" cy="27" r="0.75" />
+              <circle class="reference-dust" cx="126" cy="38" r="0.75" />
+              <circle class="reference-dust" cx="583" cy="51" r="0.5" />
+              <circle class="reference-dust" cx="537" cy="49" r="0.35" />
+              <circle class="reference-dust" cx="228" cy="54" r="0.35" />
+              <circle class="reference-dust" cx="398" cy="22" r="0.75" />
+              <circle class="reference-dust" cx="109" cy="20" r="0.35" />
+              <circle class="reference-dust" cx="584" cy="56" r="0.75" />
+              <circle class="reference-dust" cx="468" cy="48" r="0.5" />
+              <circle class="reference-dust" cx="90" cy="18" r="0.75" />
+              <circle class="reference-dust" cx="408" cy="58" r="0.35" />
+              <circle class="reference-dust" cx="278" cy="46" r="0.5" />
+              <circle class="reference-dust" cx="93" cy="45" r="0.5" />
+              <circle class="reference-dust" cx="353" cy="30" r="0.5" />
+              <circle class="reference-dust" cx="57" cy="61" r="0.5" />
+              <circle class="reference-dust" cx="239" cy="4" r="0.5" />
+              <circle class="reference-dust" cx="209" cy="38" r="0.5" />
+              <circle class="reference-dust" cx="270" cy="46" r="0.75" />
+              <circle class="reference-dust" cx="55" cy="38" r="0.75" />
+              <circle class="reference-dust" cx="230" cy="30" r="0.75" />
+              <circle class="reference-dust" cx="152" cy="3" r="0.5" />
+              <circle class="reference-dust" cx="254" cy="60" r="0.35" />
+              <circle class="reference-dust" cx="54" cy="3" r="0.35" />
+              <circle class="reference-dust" cx="12" cy="12" r="0.35" />
+              <circle class="reference-dust" cx="331" cy="61" r="0.75" />
+              <circle class="reference-dust" cx="426" cy="22" r="0.35" /></svg></span
+        ></span>
       </footer>
     </main>
 

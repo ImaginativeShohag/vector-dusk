@@ -21,6 +21,8 @@
   }
   async function test(name, fn) {
     try {
+      document.querySelectorAll('iframe').forEach((frame) => frame.remove());
+      await clearRecovery();
       await fn();
       results.push(`PASS ${name}`);
     } catch (error) {
@@ -28,6 +30,55 @@
     }
     document.querySelector('#results').textContent =
       results.join('\n') + '\nRunning remaining checks…';
+  }
+  const recoveryDatabase = 'vector-dusk.recovery.v1';
+  function clearRecovery() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(recoveryDatabase);
+      request.onsuccess = resolve;
+      request.onerror = () => reject(request.error);
+    });
+  }
+  async function until(check, message) {
+    const deadline = Date.now() + 5000;
+    while (!(await check())) {
+      if (Date.now() >= deadline) throw new Error(message);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+  async function editorReady(frame) {
+    await until(
+      () => !frame.contentDocument.querySelector('[aria-busy="true"]'),
+      'Workspace recovery did not finish',
+    );
+  }
+  async function recoveryRecord(value) {
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(recoveryDatabase, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('workspaces');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction('workspaces', value === undefined ? 'readonly' : 'readwrite');
+        const store = tx.objectStore('workspaces');
+        const request = value === undefined ? store.get('current') : store.put(value, 'current');
+        tx.oncomplete = () => resolve(request.result);
+        tx.onerror = () => reject(tx.error);
+      });
+    } finally {
+      db.close();
+    }
+  }
+  async function reloadEditor(frame) {
+    const loaded = new Promise((resolve) => (frame.onload = resolve));
+    frame.contentWindow.location.reload();
+    await loaded;
+    await editorReady(frame);
+    const doc = frame.contentDocument,
+      win = frame.contentWindow;
+    return { frame, doc, win, el: (id) => doc.getElementById(id) };
   }
   const wrap = (body, extra = '') =>
     `<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:aapt="http://schemas.android.com/aapt" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24" ${extra}>${body}</vector>`;
@@ -277,6 +328,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument;
     const el = (id) => doc.getElementById(id);
     const add = (name) => {
@@ -345,6 +397,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     let doc = frame.contentDocument;
     const el = (id) => {
       const node = doc.getElementById(id);
@@ -387,6 +440,7 @@
     const reloaded = new Promise((resolve) => (frame.onload = resolve));
     frame.contentWindow.location.reload();
     await reloaded;
+    await editorReady(frame);
     doc = frame.contentDocument;
     equal(el('profile-name').value, 'Regression palette');
     el('paste-open').click();
@@ -446,7 +500,11 @@
       };
       check();
     });
-    // Then: image overrides survive without changing the reusable profile.
+    // Then: image overrides survive on the edited illustration without changing the reusable profile.
+    el('asset-list')
+      .querySelectorAll('.asset')
+      .item(workspace.assets.length - 1)
+      .click();
     equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#445566');
     frame.remove();
   });
@@ -593,6 +651,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     const el = (id) => doc.getElementById(id);
@@ -722,6 +781,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     const el = (id) => doc.getElementById(id);
@@ -790,6 +850,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       el = (id) => doc.getElementById(id);
     const original = el('target-hex').value;
@@ -819,6 +880,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow,
       el = (id) => doc.getElementById(id);
@@ -861,6 +923,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow,
       el = (id) => doc.getElementById(id);
@@ -887,6 +950,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow,
       el = (id) => doc.getElementById(id);
@@ -903,10 +967,14 @@
     el('save-profile').click();
     // Then
     equal(blocked(), true);
-    ok(el('workspace-state').textContent.includes('Unsaved'), 'Missing workspace status');
+    ok(el('workspace-state').textContent.includes('not downloaded'), 'Missing workspace status');
     // When / Then
     win.HTMLAnchorElement.prototype.click = () => {};
     el('save-workspace').click();
+    await until(
+      () => el('recovery-state').textContent.startsWith('Local recovery saved'),
+      'Local save did not settle',
+    );
     equal(blocked(), false);
     el('keep-original').click();
     equal(blocked(), true);
@@ -921,6 +989,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     // When / Then
@@ -945,6 +1014,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow,
       el = (id) => doc.getElementById(id);
@@ -968,6 +1038,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     const el = (id) => doc.getElementById(id);
@@ -1048,6 +1119,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     const el = (id) => doc.getElementById(id);
@@ -1135,6 +1207,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     const el = (id) => doc.getElementById(id);
@@ -1195,6 +1268,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     const el = (id) => doc.getElementById(id);
@@ -1238,6 +1312,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     const el = (id) => doc.getElementById(id);
@@ -1310,6 +1385,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     try {
       const doc = frame.contentDocument,
         win = frame.contentWindow;
@@ -1363,6 +1439,7 @@
     document.body.append(frame);
     try {
       await loaded;
+      await editorReady(frame);
       const doc = frame.contentDocument;
       const status = doc.getElementById('status');
       if (fragment.startsWith('v=')) {
@@ -1574,6 +1651,7 @@
     const loaded = new Promise((resolve) => (frame.onload = resolve));
     document.body.append(frame);
     await loaded;
+    await editorReady(frame);
     const doc = frame.contentDocument,
       win = frame.contentWindow;
     return { frame, doc, win, el: (id) => doc.getElementById(id) };
@@ -1798,6 +1876,11 @@
       // Given: removing the bundled example leaves nothing worth saving.
       el('asset-list').querySelector('.asset-remove').click();
       equal(el('asset-count').textContent, '0');
+      equal(unloadBlocked(), true);
+      await until(
+        () => el('recovery-state').textContent.startsWith('Local recovery saved'),
+        'Empty recovery did not settle',
+      );
       equal(unloadBlocked(), false);
       el('toast-action').click();
       equal(el('asset-count').textContent, '1');
@@ -1921,6 +2004,350 @@
       equal(el('drop-overlay').hidden, true);
       await waitForAsset(el, win, 'late.xml');
       equal(el('asset-name').textContent, 'late.xml');
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Local recovery restores source artwork, palette, resources, overrides and draft name after reload', async () => {
+    let editor = await editorFrame();
+    try {
+      let { el, win } = editor;
+      await el('vector-files').onchange({
+        target: {
+          files: [
+            new win.File(
+              [wrap(path('#123456') + path('#123456') + path('@color/brand'))],
+              'recover.xml',
+            ),
+          ],
+          value: '',
+        },
+      });
+      await el('resource-files').onchange({
+        target: {
+          files: [
+            new win.File(
+              ['<resources><color name="brand">#789abc</color></resources>'],
+              'colors.xml',
+            ),
+          ],
+          value: '',
+        },
+      });
+      const input = (id, value) => {
+        el(id).value = value;
+        el(id).dispatchEvent(new win.Event('input', { bubbles: true }));
+        el(id).dispatchEvent(new win.Event('change', { bubbles: true }));
+      };
+      input('target-hex', '#AABBCC');
+      el('scope-image').click();
+      input('target-hex', '#445566');
+      el('dark-preview')
+        .querySelector('path[data-node]')
+        .dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+      el('scope-shape').click();
+      input('target-hex', '#778899');
+      input('dark-background', '#112233');
+      input('profile-name', 'Recovered artwork');
+      await until(
+        async () => (await recoveryRecord())?.name === 'Recovered artwork',
+        'Workspace was not saved',
+      );
+      const saved = await recoveryRecord();
+      ok(
+        saved.workspace.assets[0].xml.includes('@color/brand'),
+        'Source resource reference was lost',
+      );
+      equal(saved.workspace.profile.resources['@color/brand'], '#789ABC');
+      equal(saved.workspace.profile.background, '#112233');
+      equal(Object.values(saved.workspace.assets[0].uses), ['#778899']);
+      editor = await reloadEditor(editor.frame);
+      ({ el, win } = editor);
+      equal(el('asset-name').textContent, 'recover.xml');
+      equal(el('profile-name').value, 'Recovered artwork');
+      equal(el('dark-background').value, '#112233');
+      equal(
+        [...el('dark-preview').querySelectorAll('path[data-node]')]
+          .map((node) => node.getAttribute('fill'))
+          .slice(0, 2),
+        ['#778899', '#445566'],
+      );
+      equal(el('light-preview').querySelector('path[data-node]').getAttribute('fill'), '#123456');
+      equal(await recoveryRecord(), saved);
+      el('profile-name').value = '';
+      el('profile-name').dispatchEvent(new win.Event('input'));
+      await until(async () => (await recoveryRecord())?.name === '', 'Unnamed draft was not saved');
+      editor = await reloadEditor(editor.frame);
+      equal(editor.el('profile-name').value, '');
+    } finally {
+      editor.frame.remove();
+    }
+  });
+
+  await test('Recovery keeps removed artwork removed, including an empty unnamed collection', async () => {
+    let editor = await editorFrame();
+    try {
+      const { el, win } = editor;
+      await el('vector-files').onchange({
+        target: {
+          files: ['one', 'two'].map((name) => new win.File([wrap(path('#123456'))], name + '.xml')),
+          value: '',
+        },
+      });
+      el('asset-list').querySelector('.asset-remove').click();
+      await until(
+        async () => (await recoveryRecord())?.workspace.assets.length === 1,
+        'Removal not saved',
+      );
+      editor = await reloadEditor(editor.frame);
+      equal(editor.el('asset-name').textContent, 'two.xml');
+      editor.el('asset-list').querySelector('.asset-remove').click();
+      await until(
+        async () => (await recoveryRecord())?.workspace.assets.length === 0,
+        'Empty collection not saved',
+      );
+      editor = await reloadEditor(editor.frame);
+      equal(editor.el('asset-count').textContent, '0');
+      equal(editor.el('export-current').disabled, true);
+    } finally {
+      editor.frame.remove();
+    }
+  });
+
+  await test('Failed recovery writes keep the prior backup and leave the editor usable', async () => {
+    const { frame, el, win } = await editorFrame();
+    const original = win.IDBObjectStore.prototype.put;
+    try {
+      await el('vector-files').onchange({
+        target: { files: [new win.File([wrap(path('#123456'))], 'safe.xml')], value: '' },
+      });
+      await until(async () => !!(await recoveryRecord()), 'Initial backup missing');
+      el('target-hex').value = '#ABCDEF';
+      el('target-hex').dispatchEvent(new win.Event('input'));
+      const pending = new win.Event('beforeunload', { cancelable: true });
+      win.dispatchEvent(pending);
+      equal(pending.defaultPrevented, true);
+      await nextFrame(win);
+      await until(
+        () => el('recovery-state').textContent.startsWith('Local recovery saved'),
+        'Edited backup did not settle',
+      );
+      const settled = new win.Event('beforeunload', { cancelable: true });
+      win.dispatchEvent(settled);
+      equal(settled.defaultPrevented, false);
+      const editedBackup = await recoveryRecord();
+      win.IDBObjectStore.prototype.put = () => {
+        throw new win.DOMException('Storage full', 'QuotaExceededError');
+      };
+      el('profile-name').value = 'Unstored edit';
+      el('profile-name').dispatchEvent(new win.Event('input'));
+      await until(
+        () => /unavailable|failed|could not/i.test(el('recovery-state').textContent),
+        'Storage failure was not shown',
+      );
+      equal(await recoveryRecord(), editedBackup);
+      el('target-hex').value = '#ABCDEF';
+      el('target-hex').dispatchEvent(new win.Event('input'));
+      await nextFrame(win);
+      equal(el('dark-preview').querySelector('path[data-node]').getAttribute('fill'), '#ABCDEF');
+      equal(el('save-workspace').disabled, false);
+    } finally {
+      win.IDBObjectStore.prototype.put = original;
+      frame.remove();
+    }
+  });
+
+  await test('Unreadable local recovery remains intact and reports the problem', async () => {
+    const invalid = { workspace: { version: 999, assets: [] }, name: 'future draft', active: 0 };
+    await recoveryRecord(invalid);
+    const { frame, el, win } = await editorFrame();
+    try {
+      ok(
+        /unavailable|could not|invalid|unreadable/i.test(el('recovery-state').textContent),
+        'Invalid recovery not explained',
+      );
+      el('profile-name').value = 'New edit';
+      el('profile-name').dispatchEvent(new win.Event('input'));
+      await new Promise((resolve) => win.setTimeout(resolve, 350));
+      equal(await recoveryRecord(), invalid);
+      equal(el('paste-open').disabled, false);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Agent links protect a saved workspace on failure and replace it only after a valid import', async () => {
+    const saved = {
+      workspace: {
+        kind: 'vector-dark-workspace',
+        version: 1,
+        profile: savedProfile('Old palette', '#ABCDEF'),
+        assets: [
+          {
+            name: 'prior.xml',
+            xml: wrap(path('#123456')),
+            overrides: {},
+            uses: {},
+            separate: false,
+          },
+        ],
+      },
+      name: 'Prior draft',
+      active: 0,
+    };
+    await recoveryRecord(saved);
+    await agentFrame(
+      new URLSearchParams({ v: '1', name: 'broken.xml', data: '<vector>' }).toString(),
+      async (doc) => {
+        equal(doc.getElementById('asset-name').textContent, 'prior.xml');
+        equal(doc.getElementById('profile-name').value, 'Prior draft');
+        equal(
+          doc.getElementById('dark-preview').querySelector('[data-node]').getAttribute('fill'),
+          '#ABCDEF',
+        );
+        equal(await recoveryRecord(), saved);
+      },
+      true,
+    );
+    await agentFrame(
+      new URLSearchParams({ v: '1', name: 'incoming.xml', data: wrap(path('#123456')) }).toString(),
+      async (doc) => {
+        equal(doc.getElementById('asset-name').textContent, 'incoming.xml');
+        ok(
+          doc.getElementById('dark-preview').querySelector('[data-node]').getAttribute('fill') !==
+            '#ABCDEF',
+          'Incoming artwork inherited the recovered palette',
+        );
+        await until(
+          async () => (await recoveryRecord())?.workspace.assets[0].name === 'incoming.xml',
+          'Incoming artwork not saved',
+        );
+        equal((await recoveryRecord()).workspace.assets.length, 1);
+      },
+    );
+  });
+
+  await test('Preview zoom, pan, keyboard and fit stay synchronized without changing exported artwork', async () => {
+    const { frame, el, win } = await editorFrame();
+    try {
+      await el('vector-files').onchange({
+        target: {
+          files: ['one', 'two'].map(
+            (name) => new win.File([wrap(path('#123456') + path('#123456'))], name + '.xml'),
+          ),
+          value: '',
+        },
+      });
+      const canvases = [el('light-preview'), el('dark-preview')];
+      const view = () =>
+        canvases.map((canvas) =>
+          ['--preview-zoom', '--preview-x', '--preview-y'].map((key) =>
+            canvas.style.getPropertyValue(key),
+          ),
+        );
+      const key = (value) =>
+        canvases[0].dispatchEvent(
+          new win.KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }),
+        );
+      el('show-xml').click();
+      const original = el('export-xml').value || el('export-xml').textContent;
+      el('export-close').click();
+      el('preview-zoom-in').click();
+      equal(view()[0][0], '1.25');
+      equal(view()[0], view()[1]);
+      key('ArrowRight');
+      key('ArrowDown');
+      equal(view()[0].slice(1), ['24px', '24px']);
+      equal(view()[0], view()[1]);
+      const beforeEdit = view();
+      el('target-hex').value = '#AABBCC';
+      el('target-hex').dispatchEvent(new win.Event('input'));
+      await nextFrame(win);
+      equal(view(), beforeEdit);
+      el('undo').click();
+      el('show-xml').click();
+      equal(el('export-xml').value || el('export-xml').textContent, original);
+      el('export-close').click();
+      for (let i = 0; i < 40; i++) el('preview-zoom-in').click();
+      equal(view()[0][0], '8');
+      equal(el('preview-zoom-in').disabled, true);
+      for (let i = 0; i < 40; i++) el('preview-zoom-out').click();
+      equal(view()[0][0], '0.25');
+      equal(el('preview-zoom-out').disabled, true);
+      key('+');
+      equal(view()[0][0], '0.5');
+      key('Home');
+      equal(view()[0], ['1', '0px', '0px']);
+      key('+');
+      key('ArrowLeft');
+      el('preview-fit').click();
+      equal(view()[0], ['1', '0px', '0px']);
+      key('+');
+      key('ArrowLeft');
+      el('asset-list').querySelector('.asset:not(.active)').click();
+      equal(view()[0], ['1', '0px', '0px']);
+      equal(view()[0], view()[1]);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  await test('Preview drags pan while plain clicks select shapes, and cancellation ends panning', async () => {
+    const { frame, el, win } = await editorFrame();
+    try {
+      await el('vector-files').onchange({
+        target: {
+          files: [new win.File([wrap(path('#123456') + path('#123456'))], 'pan.xml')],
+          value: '',
+        },
+      });
+      const canvas = el('dark-preview');
+      let node = canvas.querySelector('[data-node]');
+      const pointer = (type, x, y) =>
+        node.dispatchEvent(
+          new win.PointerEvent(type, {
+            pointerId: 1,
+            isPrimary: true,
+            pointerType: 'mouse',
+            button: 0,
+            buttons: type === 'pointerup' ? 0 : 1,
+            clientX: x,
+            clientY: y,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      // Synthetic events have no native pointer capture session; verify handlers independently.
+      canvas.setPointerCapture = () => {};
+      canvas.releasePointerCapture = () => {};
+      pointer('pointerdown', 10, 10);
+      pointer('pointermove', 50, 40);
+      pointer('pointerup', 50, 40);
+      node.dispatchEvent(
+        new win.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }),
+      );
+      equal(el('highlight').checked, false);
+      equal(canvas.style.getPropertyValue('--preview-x'), '40px');
+      equal(canvas.style.getPropertyValue('--preview-y'), '30px');
+      equal(el('light-preview').style.getPropertyValue('--preview-x'), '40px');
+      pointer('pointerdown', 50, 40);
+      pointer('pointermove', 51, 41);
+      pointer('pointerup', 51, 41);
+      node.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+      equal(el('highlight').checked, true);
+      node = canvas.querySelector('[data-node]');
+      pointer('pointerdown', 10, 10);
+      pointer('pointermove', 30, 30);
+      node.dispatchEvent(
+        new win.PointerEvent('lostpointercapture', { pointerId: 1, bubbles: true }),
+      );
+      pointer('pointermove', 40, 40);
+      equal(canvas.style.getPropertyValue('--preview-x'), '70px');
+      pointer('pointercancel', 30, 30);
+      const offset = canvas.style.getPropertyValue('--preview-x');
+      pointer('pointermove', 80, 80);
+      equal(canvas.style.getPropertyValue('--preview-x'), offset);
     } finally {
       frame.remove();
     }
