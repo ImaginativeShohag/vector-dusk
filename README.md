@@ -4,9 +4,11 @@
 
 **A local-first dark palette editor for SVG and Android VectorDrawable artwork.** Import illustrations, refine their colors with side-by-side previews, and export files ready for your project. Artwork is processed in your browser, with no account or uploads.
 
-<a href="https://imaginativeshohag.github.io/vector-dusk/">
-  <img src="assets/launch-vector-dusk.png" alt="Launch Vector Dusk" width="300">
-</a>
+<p align="center">
+  <a href="https://imaginativeshohag.github.io/vector-dusk/">
+    <img src="assets/launch-vector-dusk.png" alt="Launch Vector Dusk" width="300">
+  </a>
+</p>
 
 [User guide](guide.html) · [Privacy](privacy.html) · [Deployment](DEPLOYMENT.md)
 
